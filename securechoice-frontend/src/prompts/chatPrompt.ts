@@ -1,0 +1,1 @@
+export const chatPrompt = (userMessage: string, context: { uploadedDocuments: string[]; userProfile?: any }) => `You are RiskNinja AI, a specialized insurance assistant. USER QUESTION: ${userMessage}. Respond helpfully.`;

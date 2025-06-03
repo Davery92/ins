@@ -1,0 +1,1 @@
+export const generateReportPrompt = (documentName: string, context: { insights: string[]; recommendations: string[]; riskScore: number }) => `Generate a comprehensive insurance policy report for "${documentName}". Risk score: ${context.riskScore}/100. Include executive summary, detailed analysis, and recommendations.`;

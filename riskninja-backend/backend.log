@@ -1,0 +1,49 @@
+nohup: ignoring input
+
+> riskninja-backend@1.0.0 dev
+> nodemon src/index.ts
+
+[33m[nodemon] 3.1.10[39m
+[33m[nodemon] to restart at any time, enter `rs`[39m
+[33m[nodemon] watching path(s): *.*[39m
+[33m[nodemon] watching extensions: ts,json[39m
+[32m[nodemon] starting `ts-node src/index.ts`[39m
+node:events:495
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: EBADF: bad file descriptor, read
+Emitted 'error' event on ReadStream instance at:
+    at emitErrorNT (node:internal/streams/destroy:151:8)
+    at errorOrDestroy (node:internal/streams/destroy:214:7)
+    at node:internal/fs/streams:260:9
+    at FSReqCallback.wrapper [as oncomplete] (node:fs:677:5) {
+  errno: -9,
+  code: 'EBADF',
+  syscall: 'read'
+}
+
+Node.js v18.19.1
+Executing (default): SELECT 1+1 AS result
+✅ Database connection established successfully.
+Executing (default): SELECT name FROM sqlite_master WHERE type='table' AND name='users';
+Executing (default): PRAGMA INDEX_LIST(`users`)
+Executing (default): PRAGMA INDEX_INFO(`sqlite_autoindex_users_1`)
+Executing (default): PRAGMA INDEX_INFO(`sqlite_autoindex_users_2`)
+Executing (default): SELECT name FROM sqlite_master WHERE type='table' AND name='chat_messages';
+Executing (default): PRAGMA INDEX_LIST(`chat_messages`)
+Executing (default): PRAGMA INDEX_INFO(`sqlite_autoindex_chat_messages_1`)
+Executing (default): SELECT name FROM sqlite_master WHERE type='table' AND name='policy_documents';
+Executing (default): PRAGMA INDEX_LIST(`policy_documents`)
+Executing (default): PRAGMA INDEX_INFO(`sqlite_autoindex_policy_documents_1`)
+✅ Database tables created successfully.
+🚀 RiskNinja Backend running on port 5000
+📊 Environment: development
+🔗 Health check: http://localhost:5000/health
+[0mGET /health [32m200[0m 14.296 ms - 82[0m
+Executing (default): SELECT `id`, `email`, `firstName`, `lastName`, `password`, `createdAt`, `updatedAt` FROM `users` AS `User` WHERE `User`.`email` = 'test@example.com';
+Executing (default): INSERT INTO `users` (`id`,`email`,`firstName`,`lastName`,`password`,`createdAt`,`updatedAt`) VALUES ($1,$2,$3,$4,$5,$6,$7);
+[0mPOST /api/auth/register [32m201[0m 1074.576 ms - 398[0m
+Executing (default): SELECT `id`, `email`, `firstName`, `lastName`, `password`, `createdAt`, `updatedAt` FROM `users` AS `User` WHERE `User`.`email` = 'test2@example.com';
+Executing (default): INSERT INTO `users` (`id`,`email`,`firstName`,`lastName`,`password`,`createdAt`,`updatedAt`) VALUES ($1,$2,$3,$4,$5,$6,$7);
+[0mPOST /api/auth/register [32m201[0m 871.665 ms - 400[0m
