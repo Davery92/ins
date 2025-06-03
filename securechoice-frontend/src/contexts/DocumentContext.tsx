@@ -29,6 +29,7 @@ interface DocumentContextType {
   addChatMessage: (message: ChatMessage) => Promise<void>;
   clearChatHistory: () => Promise<void>;
   exportChatHistory: () => void;
+  startNewSession: () => void;
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(undefined);
@@ -48,6 +49,7 @@ interface DocumentProviderProps {
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) => {
+  const [sessionId, setSessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
   const [documents, setDocuments] = useState<PolicyDocument[]>([]);
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>('general-liability');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -74,7 +76,12 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
 
       if (response.ok) {
         const data = await response.json();
-        setChatHistory(data.messages);
+        // Parse timestamp strings into Date objects
+        const parsedMessages = data.messages.map((msg: any) => ({
+          ...msg,
+          timestamp: new Date(msg.timestamp),
+        }));
+        setChatHistory(parsedMessages);
       }
     } catch (error) {
       console.error('Failed to load chat history:', error);
@@ -115,7 +122,7 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
 
   const addChatMessage = async (message: ChatMessage): Promise<void> => {
     // Add to local state immediately for UI responsiveness
-    setChatHistory(prev => [...prev, message]);
+    setChatHistory(prev => prev.some(msg => msg.id === message.id) ? prev : [...prev, message]);
 
     // Save to backend if user is authenticated
     if (token) {
@@ -130,6 +137,7 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
             content: message.content,
             sender: message.sender,
             context: {
+              sessionId,
               policyType: selectedPolicyType,
               documentCount: documents.length,
               documentNames: documents.map(doc => doc.name),
@@ -197,6 +205,12 @@ Export completed by RiskNinja AI
     }
   };
 
+  const startNewSession = () => {
+    setChatHistory([]);
+    setDocuments([]);
+    setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
+  };
+
   const value: DocumentContextType = {
     documents,
     setDocuments,
@@ -211,7 +225,8 @@ Export completed by RiskNinja AI
     setChatHistory,
     addChatMessage,
     clearChatHistory,
-    exportChatHistory
+    exportChatHistory,
+    startNewSession
   };
 
   return (

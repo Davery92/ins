@@ -10,6 +10,7 @@ interface ChatMessage {
     policyType?: string;
     documentCount?: number;
     documentNames?: string[];
+    sessionId?: string;
   };
 }
 
@@ -128,6 +129,21 @@ const ChatHistory: React.FC = () => {
     return matchesSearch && matchesSender;
   });
 
+  // Group messages into chat sessions by sessionId
+  const sessions = filteredMessages.reduce((acc: { sessionId: string; messages: ChatMessage[] }[], message) => {
+    const sid = message.context?.sessionId || 'default';
+    let session = acc.find(s => s.sessionId === sid);
+    if (!session) {
+      session = { sessionId: sid, messages: [] };
+      acc.push(session);
+    }
+    session.messages.push(message);
+    return acc;
+  }, []);
+
+  // State to track expanded session
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleString();
   };
@@ -238,56 +254,72 @@ const ChatHistory: React.FC = () => {
 
       {/* Messages */}
       <div className="bg-white dark:bg-dark-surface rounded-lg border border-gray-200 dark:border-dark-border flex-1">
-        {filteredMessages.length === 0 ? (
+        {sessions.length === 0 ? (
           <div className="p-8 text-center">
             <div className="text-accent dark:text-dark-muted mb-2">
-              {messages.length === 0 ? 'No chat history yet' : 'No messages match your search'}
+              {sessions.length === 0 ? 'No chat history yet' : 'No messages match your search'}
             </div>
             <p className="text-sm text-accent dark:text-dark-muted">
-              {messages.length === 0 
+              {sessions.length === 0 
                 ? 'Start a conversation on the Home page to see your chat history here.'
                 : 'Try adjusting your search terms or filters.'
               }
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-200 dark:divide-dark-border">
-            {filteredMessages.map((message) => (
-              <div key={message.id} className="p-4">
-                <div className="flex items-start gap-3">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
-                    message.sender === 'user' ? 'bg-green-600' : 'bg-primary'
-                  }`}>
-                    {message.sender === 'user' ? (user?.firstName?.[0] || 'U') : 'AI'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-secondary dark:text-dark-text">
-                        {message.sender === 'user' ? `${user?.firstName} ${user?.lastName}` : 'RiskNinja AI'}
-                      </span>
-                      <span className="text-xs text-accent dark:text-dark-muted">
-                        {formatTimestamp(message.timestamp)}
-                      </span>
-                    </div>
-                    <div className="text-secondary dark:text-dark-text whitespace-pre-wrap">
-                      {message.content}
-                    </div>
-                    {message.context && (
-                      <div className="mt-2 text-xs text-accent dark:text-dark-muted">
-                        {message.context.policyType && (
-                          <span className="inline-block bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded mr-2">
-                            Policy: {message.context.policyType}
-                          </span>
-                        )}
-                        {message.context.documentCount && (
-                          <span className="inline-block bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded">
-                            {message.context.documentCount} document(s)
-                          </span>
-                        )}
+          <div className="flex flex-col gap-4">
+            {sessions.map(session => (
+              <div key={session.sessionId} className="border rounded-lg">
+                <button
+                  className="w-full text-left px-4 py-2 bg-gray-100 dark:bg-dark-border"
+                  onClick={() => setExpandedSessionId(
+                    expandedSessionId === session.sessionId ? null : session.sessionId
+                  )}
+                >
+                  Chat started {formatTimestamp(session.messages[0].timestamp)}
+                </button>
+                {expandedSessionId === session.sessionId && (
+                  <div className="px-4 py-2">
+                    {session.messages.map(message => (
+                      <div key={message.id} className="p-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
+                            message.sender === 'user' ? 'bg-green-600' : 'bg-primary'
+                          }`}>
+                            {message.sender === 'user' ? (user?.firstName?.[0] || 'U') : 'AI'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-medium text-secondary dark:text-dark-text">
+                                {message.sender === 'user' ? `${user?.firstName} ${user?.lastName}` : 'RiskNinja AI'}
+                              </span>
+                              <span className="text-xs text-accent dark:text-dark-muted">
+                                {formatTimestamp(message.timestamp)}
+                              </span>
+                            </div>
+                            <div className="text-secondary dark:text-dark-text whitespace-pre-wrap">
+                              {message.content}
+                            </div>
+                            {message.context && (
+                              <div className="mt-2 text-xs text-accent dark:text-dark-muted">
+                                {message.context.policyType && (
+                                  <span className="inline-block bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded mr-2">
+                                    Policy: {message.context.policyType}
+                                  </span>
+                                )}
+                                {message.context.documentCount && (
+                                  <span className="inline-block bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded">
+                                    {message.context.documentCount} document(s)
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </div>
+                )}
               </div>
             ))}
           </div>

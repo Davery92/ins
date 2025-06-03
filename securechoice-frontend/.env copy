@@ -1,0 +1,7 @@
+# Backend API Configuration
+REACT_APP_API_URL=http://10.185.1.128:5000/api
+
+# Gemini API Configuration
+REACT_APP_GEMINI_API_KEY=AIzaSyDihARu4DzvvoqOE62az74g0Vr5Abu_3CY
+REACT_APP_GEMINI_MODEL_ID=gemini-2.0-flash
+REACT_APP_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models

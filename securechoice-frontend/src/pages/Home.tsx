@@ -7,6 +7,10 @@ import OnboardingTour from '../components/OnboardingTour';
 import { useDocuments } from '../contexts/DocumentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { aiService } from '../services/aiService';
+import { documentAnalysisPrompt, comparePoliciesPrompt } from '../prompts';
+import { policyPrompts, defaultPolicyPrompts } from '../prompts/policyPrompts';
+
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const Home: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,15 +19,16 @@ const Home: React.FC = () => {
   
   const { user, token } = useAuth();
   const { 
-    documents, 
-    addDocuments, 
+    documents,
+    addDocuments,
+    updateDocument,
     selectedPolicyType,
     setSelectedPolicyType,
     chatHistory,
     setChatHistory,
     addChatMessage,
-    clearChatHistory,
-    exportChatHistory
+    exportChatHistory,
+    startNewSession
   } = useDocuments();
 
   // Check if user is new (no previous activity)
@@ -88,83 +93,45 @@ const Home: React.FC = () => {
     { value: 'directors-officers', label: 'Directors & Officers', description: 'Executive liability coverage' }
   ];
 
-  const getPolicySpecificPrompts = (policyType: string) => {
-    const prompts = {
-      'general-liability': [
-        "Analyze my general liability coverage limits and exclusions",
-        "What gaps exist in my business liability protection?",
-        "Review my aggregate and per-occurrence limits",
-        "Assess product liability and premises coverage"
-      ],
-      'commercial-property': [
-        "Evaluate my building and equipment coverage limits",
-        "Review business personal property protection",
-        "What natural disaster coverage do I have?",
-        "Assess replacement cost vs actual cash value coverage"
-      ],
-      'workers-comp': [
-        "Analyze my workers compensation coverage by class code",
-        "Review experience modification factors and rates",
-        "What return-to-work programs are available?",
-        "Assess coverage for independent contractors"
-      ],
-      'professional-liability': [
-        "Review errors and omissions coverage limits",
-        "Analyze professional liability exclusions and scope",
-        "What prior acts coverage do I have?",
-        "Assess coverage for cyber professional liability"
-      ],
-      'cyber-liability': [
-        "Evaluate data breach response and notification coverage",
-        "Review cyber extortion and ransomware protection",
-        "What business interruption cyber coverage exists?",
-        "Assess third-party cyber liability limits"
-      ],
-      'commercial-auto': [
-        "Analyze commercial vehicle liability limits",
-        "Review hired and non-owned auto coverage",
-        "What fleet safety programs reduce premiums?",
-        "Assess cargo and equipment coverage"
-      ],
-      'business-interruption': [
-        "Review business income and extra expense coverage",
-        "Analyze waiting period and coverage triggers",
-        "What contingent business interruption coverage exists?",
-        "Assess civil authority and ingress/egress coverage"
-      ],
-      'directors-officers': [
-        "Evaluate D&O coverage for entity vs individual",
-        "Review employment practices liability coverage",
-        "What fiduciary liability protection exists?",
-        "Assess side A, B, and C coverage differences"
-      ]
-    };
-    return prompts[policyType as keyof typeof prompts] || [
-      "Analyze the key coverage areas in my commercial policy",
-      "What are the main business risks and limitations?",
-      "Review policy limits and deductibles",
-      "Assess overall commercial protection gaps"
-    ];
-  };
-
   const handleFilesUploaded = async (newFiles: UploadedFile[]) => {
     console.log('📄 Files uploaded:', newFiles.length);
     
+    // Add documents locally
     addDocuments(newFiles);
     setShowUploader(false);
 
-    // Update AI service context
-    const allDocumentNames = documents.map(d => d.name).concat(newFiles.map(f => f.name));
-    aiService.updatePolicyContext(allDocumentNames);
+    // For each new file, extract text via backend and update document
+    await Promise.all(newFiles.map(async (file) => {
+      if (file.file) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file.file);
+          const res = await fetch(`${API_BASE_URL}/documents/extract`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`
+            },
+            body: formData,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            updateDocument(file.id, { extractedText: data.text });
+          } else {
+            console.error('Failed to extract PDF:', await res.text());
+          }
+        } catch (err) {
+          console.error('Error extracting PDF:', err);
+        }
+      }
+    }));
 
-    // Automatically trigger analysis in chat
-    const policyTypeLabel = policyTypes.find(t => t.value === selectedPolicyType)?.label || 'Commercial';
-    const analysisMessage = `I've uploaded ${newFiles.length} ${policyTypeLabel.toLowerCase()} policy document(s): ${newFiles.map(f => f.name).join(', ')}. Please analyze these documents and provide insights on coverage, gaps, and recommendations.`;
-    
-    // Trigger the analysis in chat
-    setTimeout(() => {
-      handleSendMessage(analysisMessage);
-    }, 500);
+    // Update AI service context with document names
+    aiService.updatePolicyContext([
+      ...documents.map(d => d.name),
+      ...newFiles.map(f => f.name)
+    ]);
+
+    // Do not automatically trigger analysis on upload
   };
 
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -192,7 +159,7 @@ const Home: React.FC = () => {
     };
     
     // Add AI message to local state for immediate UI update
-    setChatHistory(prev => [...prev, aiMessage]);
+    setChatHistory((prev: ChatMessage[]) => [...prev, aiMessage]);
 
     try {
       // Update AI service with current document context before sending message
@@ -212,7 +179,7 @@ const Home: React.FC = () => {
       let finalAiContent = '';
       await aiService.sendMessage(contextualMessage, (streamContent) => {
         finalAiContent = streamContent;
-        setChatHistory(prev => 
+        setChatHistory((prev: ChatMessage[]) => 
           prev.map(msg => 
             msg.id === aiMessageId 
               ? { ...msg, content: streamContent }
@@ -230,7 +197,7 @@ const Home: React.FC = () => {
         isStreaming: false
       };
 
-      setChatHistory(prev => 
+      setChatHistory((prev: ChatMessage[]) => 
         prev.map(msg => 
           msg.id === aiMessageId 
             ? finalAiMessage
@@ -250,7 +217,7 @@ const Home: React.FC = () => {
         isStreaming: false
       };
 
-      setChatHistory(prev => 
+      setChatHistory((prev: ChatMessage[]) => 
         prev.map(msg => 
           msg.id === aiMessageId 
             ? errorMessage
@@ -260,6 +227,65 @@ const Home: React.FC = () => {
 
       // Save error message to backend
       await addChatMessage(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Handler for Compare & Optimize that includes document summaries as context
+  const handleComparePolicies = async () => {
+    if (documents.length < 2) return;
+    setIsLoading(true);
+    // Build document text context from extracted PDF text
+    const documentTexts = documents.map((doc) =>
+      `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`
+    );
+    // Build system prompt from comparePoliciesPrompt
+    const systemPrompt = comparePoliciesPrompt(documents.map(d => d.name));
+    const fullPrompt = `${systemPrompt}\n\n${documentTexts.join('\n\n')}`;
+    // Temporarily show the raw comparePoliciesPrompt as its own user message
+    const systemPromptMsg: ChatMessage = {
+      id: generateMessageId(),
+      content: systemPrompt,
+      sender: 'user',
+      timestamp: new Date()
+    };
+    setChatHistory(prev => [...prev, systemPromptMsg]);
+    await addChatMessage(systemPromptMsg);
+    // Temporarily show full prompt context (system + documents)
+    const contextPromptMsg: ChatMessage = {
+      id: generateMessageId(),
+      content: fullPrompt,
+      sender: 'user',
+      timestamp: new Date()
+    };
+    setChatHistory(prev => [...prev, contextPromptMsg]);
+    await addChatMessage(contextPromptMsg);
+
+    // Create AI message for streaming
+    const aiMessageId = generateMessageId();
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      content: '',
+      sender: 'ai',
+      timestamp: new Date(),
+      isStreaming: true
+    };
+    setChatHistory(prev => [...prev, aiMessage]);
+    try {
+      let finalContent = '';
+      await aiService.sendRawPrompt(fullPrompt, (streamContent) => {
+        finalContent = streamContent;
+        setChatHistory((prev: ChatMessage[]) => 
+          prev.map(msg => msg.id === aiMessageId ? { ...msg, content: streamContent } : msg)
+        );
+      });
+      // Finalize AI message
+      const completedMessage: ChatMessage = { ...aiMessage, content: finalContent, isStreaming: false };
+      setChatHistory((prev: ChatMessage[]) => prev.map(msg => msg.id === aiMessageId ? completedMessage : msg));
+      await addChatMessage(completedMessage);
+    } catch (error) {
+      console.error('Compare error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -448,9 +474,9 @@ const Home: React.FC = () => {
               </p>
             </div>
 
-            <div 
+            <div
               className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 border border-amber-200 dark:border-amber-700 rounded-lg p-6 cursor-pointer hover:shadow-md transition-all"
-              onClick={() => documents.length > 0 && handleSendMessage("Please compare my commercial insurance policies and recommend the best coverage options.")}
+              onClick={handleComparePolicies}
             >
               <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center mb-4">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
@@ -476,7 +502,7 @@ const Home: React.FC = () => {
         )}
 
         {/* AI Chat Interface */}
-        <div className="px-4 py-6" data-tour="chat-interface">
+        <div className="px-4 py-6 flex flex-col flex-1 overflow-hidden" data-tour="chat-interface">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-secondary dark:text-dark-text text-[22px] font-bold leading-tight tracking-[-0.015em]">
               Chat with RiskNinja AI
@@ -497,12 +523,12 @@ const Home: React.FC = () => {
                   </button>
                   <button
                     onClick={() => {
-                      if (window.confirm('Are you sure you want to clear the chat history? This cannot be undone.')) {
-                        clearChatHistory();
+                      if (window.confirm('Are you sure you want to clear the chat and uploaded documents? This cannot be undone.')) {
+                        startNewSession();
                       }
                     }}
                     className="text-red-600 hover:text-red-700 text-sm font-medium flex items-center gap-1 transition-colors"
-                    title="Clear chat history"
+                    title="Clear chat and documents"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
@@ -521,7 +547,7 @@ const Home: React.FC = () => {
                 💡 Try asking about your {policyTypes.find(t => t.value === selectedPolicyType)?.label.toLowerCase()} policies:
               </h4>
               <div className="flex flex-wrap gap-2">
-                {getPolicySpecificPrompts(selectedPolicyType).map((prompt, index) => (
+                {(policyPrompts[selectedPolicyType] ?? defaultPolicyPrompts).map((prompt, index) => (
                   <button
                     key={index}
                     onClick={() => handleSendMessage(prompt)}
@@ -535,7 +561,7 @@ const Home: React.FC = () => {
             </div>
           )}
           
-          <div className="h-96">
+          <div className="flex-1 overflow-hidden">
             <ChatInterface
               messages={chatHistory}
               onSendMessage={handleSendMessage}

@@ -11,6 +11,8 @@ interface RiskMetric {
 const Dashboard: React.FC = () => {
   const { documents, selectedPolicyType } = useDocuments();
   const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'risks' | 'analytics'>('overview');
+  // Fixed premium estimate, will not change on every render
+  const [estimatedPremium] = useState<number>(() => Math.floor(Math.random() * 5000 + 10000));
 
   const completedDocs = documents.filter(doc => doc.status === 'completed');
   const totalDocs = documents.length;
@@ -98,7 +100,7 @@ const Dashboard: React.FC = () => {
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
               <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{totalDocs}</div>
               <div className="text-sm text-blue-800 dark:text-blue-300">Policies Uploaded</div>
@@ -107,13 +109,9 @@ const Dashboard: React.FC = () => {
               <div className="text-2xl font-bold text-green-600 dark:text-green-400">{completedDocs.length}</div>
               <div className="text-sm text-green-800 dark:text-green-300">Analysis Complete</div>
             </div>
-            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{avgRiskScore}/100</div>
-              <div className="text-sm text-yellow-800 dark:text-yellow-300">Avg Risk Score</div>
-            </div>
             <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
               <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                ${Math.floor(Math.random() * 5000 + 10000).toLocaleString()}
+                ${estimatedPremium.toLocaleString()}
               </div>
               <div className="text-sm text-purple-800 dark:text-purple-300">Est. Annual Premium</div>
             </div>

@@ -11,6 +11,7 @@ dotenv.config();
 import { initDatabase } from './models';
 import authRoutes from './routes/auth';
 import chatRoutes from './routes/chat';
+import documentsRoutes from './routes/documents';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -86,6 +87,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/documents', documentsRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);
