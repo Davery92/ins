@@ -232,6 +232,61 @@ const Home: React.FC = () => {
     }
   };
 
+  // Handler for Risk Assessment using documentAnalysisPrompt and sendRawPrompt
+  const handleRiskAssessment = async () => {
+    console.log('⚙️ handleRiskAssessment invoked. Documents:', documents);
+    if (documents.length === 0) return;
+    setIsLoading(true);
+    for (const doc of documents) {
+      console.log('⚙️ Preparing analysis for document:', doc.name, 'extractedText length:', doc.extractedText?.length);
+      const systemPrompt = documentAnalysisPrompt(doc.name);
+      const documentText = `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`;
+      const fullPrompt = `${systemPrompt}\n\n${documentText}`;
+      console.log('⚙️ Full risk assessment prompt:', fullPrompt);
+      // Show the system prompt as a user message
+      const systemPromptMsg: ChatMessage = {
+        id: generateMessageId(),
+        content: systemPrompt,
+        sender: 'user',
+        timestamp: new Date()
+      };
+      setChatHistory(prev => [...prev, systemPromptMsg]);
+      await addChatMessage(systemPromptMsg);
+      // Show full prompt (system + document text)
+      const contextPromptMsg: ChatMessage = {
+        id: generateMessageId(),
+        content: fullPrompt,
+        sender: 'user',
+        timestamp: new Date()
+      };
+      setChatHistory(prev => [...prev, contextPromptMsg]);
+      await addChatMessage(contextPromptMsg);
+      // AI message streaming
+      const aiMessageId = generateMessageId();
+      const aiMessage: ChatMessage = {
+        id: aiMessageId,
+        content: '',
+        sender: 'ai',
+        timestamp: new Date(),
+        isStreaming: true
+      };
+      setChatHistory(prev => [...prev, aiMessage]);
+      try {
+        let finalContent = '';
+        await aiService.sendRawPrompt(fullPrompt, (streamContent) => {
+          finalContent = streamContent;
+          setChatHistory(prev => prev.map(msg => msg.id === aiMessageId ? { ...msg, content: streamContent } : msg));
+        });
+        const completedMessage: ChatMessage = { ...aiMessage, content: finalContent, isStreaming: false };
+        setChatHistory(prev => prev.map(msg => msg.id === aiMessageId ? completedMessage : msg));
+        await addChatMessage(completedMessage);
+      } catch (error) {
+        console.error('Risk Assessment error:', error);
+      }
+    }
+    setIsLoading(false);
+  };
+
   // Handler for Compare & Optimize that includes document summaries as context
   const handleComparePolicies = async () => {
     if (documents.length < 2) return;
@@ -459,7 +514,7 @@ const Home: React.FC = () => {
               className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-700 rounded-lg p-6 cursor-pointer hover:shadow-md transition-all"
               onClick={() => {
                 if (documents.length > 0) {
-                  handleSendMessage("Please analyze my uploaded commercial insurance policies and provide a comprehensive risk assessment.");
+                  handleRiskAssessment();
                 }
               }}
             >

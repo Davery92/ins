@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ChatMessage {
   id: string;
@@ -298,7 +300,9 @@ const ChatHistory: React.FC = () => {
                               </span>
                             </div>
                             <div className="text-secondary dark:text-dark-text whitespace-pre-wrap">
-                              {message.content}
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                {message.content}
+                              </ReactMarkdown>
                             </div>
                             {message.context && (
                               <div className="mt-2 text-xs text-accent dark:text-dark-muted">

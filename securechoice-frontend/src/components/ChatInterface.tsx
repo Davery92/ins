@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export interface ChatMessage {
   id: string;
@@ -102,7 +104,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     </div>
                   )}
                   <div className="text-sm leading-relaxed">
-                    {message.content}
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
                     {message.isStreaming && (
                       <span className="inline-block w-2 h-4 bg-current ml-1 animate-pulse"></span>
                     )}
