@@ -3,7 +3,7 @@ export const config = {
   // Gemini API Configuration
   gemini: {
     apiKey: process.env.REACT_APP_GEMINI_API_KEY || '',
-    modelId: process.env.REACT_APP_GEMINI_MODEL_ID || 'gemini-2.0-flash',
+    modelId: process.env.REACT_APP_GEMINI_MODEL_ID || 'gemini-2.5-flash-preview',
     baseUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
   },
 

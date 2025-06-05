@@ -158,111 +158,15 @@ User question: ${userMessage}`;
       return response;
     } catch (error) {
       console.error('AI service error:', error);
-      const fallbackResponse = 'I apologize, but I\'m experiencing technical difficulties. Please try again in a moment.';
+      const fallbackResponse = 'The model is currently unavailable. Please try again later.';
       onStreamUpdate(fallbackResponse);
       return fallbackResponse;
     }
   }
 
-  // Fallback responses when API is unavailable
+  // Fallback when the model is unavailable
   private getFallbackResponse(prompt: string): string {
-    const lowerPrompt = prompt.toLowerCase();
-    
-    // Policy comparison queries
-    if (lowerPrompt.includes('compare') && (lowerPrompt.includes('polic') || lowerPrompt.includes('coverage'))) {
-      return `**Commercial Policy Comparison Analysis**
-
-Based on your uploaded documents, here's what I found:
-
-**General Liability Options:**
-• Carrier A: $2,400/year, $1M per occurrence, $2M aggregate
-• Carrier B: $3,100/year, $2M per occurrence, $4M aggregate  
-• Carrier C: $2,800/year, $1M per occurrence, $3M aggregate
-
-**Professional Liability Comparison:**
-• Option 1: $1,800/year, $1M limit, $5K deductible
-• Option 2: $2,200/year, $2M limit, $2.5K deductible
-
-**Recommendation:** Carrier B offers superior protection with higher limits that better align with your business risk exposure, especially for the additional $700 annual investment.
-
-Would you like me to analyze specific coverage areas like product liability, premises liability, or cyber coverage?`;
-    }
-
-    // Risk assessment queries
-    if (lowerPrompt.includes('risk') && (lowerPrompt.includes('factor') || lowerPrompt.includes('assess'))) {
-      return `**Business Risk Assessment Report**
-
-I've identified several risk factors based on your commercial policies:
-
-**High Risk Areas:**
-🔴 Inadequate cyber liability coverage ($100K) - Recommend minimum $1M for data breach costs
-🔴 No umbrella policy - Business assets exposed above primary limits
-🔴 Workers comp experience mod above 1.0 - Safety program improvements needed
-
-**Medium Risk Areas:**
-🟡 Limited professional liability coverage - Consider increasing to $2M minimum
-🟡 No business interruption coverage - Revenue loss exposure during claims
-🟡 Commercial auto fleet without hired/non-owned coverage
-
-**Low Risk Areas:**
-🟢 Adequate general liability limits ($2M aggregate)
-🟢 Property coverage includes replacement cost
-🟢 Current on premium payments with good carrier ratings
-
-**Immediate Recommendations:** 
-1. Add $5M umbrella policy ($800-1,200/year)
-2. Increase cyber coverage to $1M ($600-900/year)
-3. Implement safety training program to reduce workers comp mod`;
-    }
-
-    // Savings opportunities
-    if (lowerPrompt.includes('saving') || lowerPrompt.includes('money') || lowerPrompt.includes('cost') || lowerPrompt.includes('optim')) {
-      return `**Commercial Insurance Cost Optimization**
-
-I found several opportunities to reduce your business insurance costs:
-
-**Immediate Savings Opportunities:**
-• Package policies with one carrier: Save $2,400-4,800/year
-• Increase general liability deductible to $2,500: Save $800/year
-• Install security system (property): Save $600/year
-• Fleet safety program (commercial auto): Save $1,200/year
-
-**Risk Management Savings:**
-• Workplace safety training (workers comp): Save $1,800/year
-• Cyber security training program: Save $400/year
-• Professional development/certifications: Save $300/year
-
-**Long-term Strategies:**
-• Claims-free discount accumulation: $1,000+/year potential
-• Industry association group coverage: 10-15% savings
-• Captive insurance participation: 15-25% savings for larger businesses
-
-**Total Potential Annual Savings: $8,000-12,000**
-
-The biggest opportunity is packaging your coverage with a commercial lines specialist. Would you like me to show you specific bundling options?`;
-    }
-
-    // Default greeting response
-    return `**Welcome to RiskNinja Commercial Insurance AI** 🏢
-
-I'm your specialized commercial insurance assistant, ready to help with:
-
-🛡️ **Risk Assessment** - Identify exposures, evaluate coverage adequacy, benchmark limits
-💼 **Policy Analysis** - Review terms, conditions, exclusions, and compliance requirements  
-💰 **Cost Management** - Find savings, optimize deductibles, package discounts
-📊 **Claims Support** - Process guidance, documentation requirements, settlement strategies
-📋 **Compliance** - Industry regulations, certificate requirements, contract reviews
-
-**Current Policy Portfolio:** ${this.policyContext.uploadedDocuments.length} documents uploaded
-**Coverage Types:** General Liability, Property, Workers Comp, Professional Liability, Cyber, Auto, D&O
-
-What would you like me to help you with today?
-
-**Quick Examples:**
-• "Analyze my general liability coverage gaps"
-• "What cyber liability limits should my business have?"
-• "How can I reduce my workers compensation costs?"
-• "Compare my property coverage options"`;
+    return 'The model is currently unavailable. Please try again later.';
   }
 
   // Update policy context (called when documents are uploaded)
@@ -517,15 +421,9 @@ Comprehensive/Collision: Actual Cash Value`,
     return keyTerms[policyType as keyof typeof keyTerms] || ['Policy Terms', 'Coverage Limits', 'Deductibles', 'Exclusions'];
   }
 
-  // Test API connection
+  // Test API connection without network call: check if API key is present
   public async testConnection(): Promise<boolean> {
-    try {
-      const testResponse = await this.callGeminiAPI('Hello, can you confirm you are working?');
-      return testResponse.length > 0;
-    } catch (error) {
-      console.error('API connection test failed:', error);
-      return false;
-    }
+    return Promise.resolve(!!this.apiKey);
   }
 
   private getFallbackPolicyAnalysis(policyType: string): {

@@ -31,6 +31,7 @@ const ChatHistory: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSender, setFilterSender] = useState<'all' | 'user' | 'ai'>('all');
   const [error, setError] = useState<string | null>(null);
+  const [reportToView, setReportToView] = useState<ChatMessage | null>(null);
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
@@ -131,17 +132,19 @@ const ChatHistory: React.FC = () => {
     return matchesSearch && matchesSender;
   });
 
-  // Group messages into chat sessions by sessionId
-  const sessions = filteredMessages.reduce((acc: { sessionId: string; messages: ChatMessage[] }[], message) => {
-    const sid = message.context?.sessionId || 'default';
-    let session = acc.find(s => s.sessionId === sid);
-    if (!session) {
-      session = { sessionId: sid, messages: [] };
-      acc.push(session);
-    }
-    session.messages.push(message);
-    return acc;
-  }, []);
+  // Group messages into chat sessions by sessionId, excluding saved reports
+  const sessions = filteredMessages
+    .filter(msg => !msg.content.startsWith('RISKNINJA POLICY ANALYSIS REPORT'))
+    .reduce((acc: { sessionId: string; messages: ChatMessage[] }[], message) => {
+      const sid = message.context?.sessionId || 'default';
+      let session = acc.find(s => s.sessionId === sid);
+      if (!session) {
+        session = { sessionId: sid, messages: [] };
+        acc.push(session);
+      }
+      session.messages.push(message);
+      return acc;
+    }, []);
 
   // State to track expanded session
   const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
@@ -184,29 +187,69 @@ const ChatHistory: React.FC = () => {
         </p>
       </div>
 
+      {/* Saved Reports Section */}
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">Saved Reports</h2>
+        {messages.filter(msg => msg.content.startsWith('RISKNINJA POLICY ANALYSIS REPORT')).length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {messages.filter(msg => msg.content.startsWith('RISKNINJA POLICY ANALYSIS REPORT')).map(msg => (
+              <button
+                key={msg.id}
+                onClick={() => setReportToView(msg)}
+                className="p-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-left hover:shadow transition-shadow"
+              >
+                <div className="font-medium text-secondary dark:text-dark-text truncate">
+                  Report generated {formatTimestamp(msg.timestamp)}
+                </div>
+                <div className="text-sm text-accent dark:text-dark-muted">Click to view</div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-accent dark:text-dark-muted mb-4">No saved reports</div>
+        )}
+        {reportToView && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-dark-surface rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center p-4 border-b">
+                <h3 className="text-lg font-bold text-secondary dark:text-dark-text">Saved Report</h3>
+                <button onClick={() => setReportToView(null)} className="text-secondary dark:text-white hover:text-accent px-2 py-1 rounded">
+                  Close
+                </button>
+              </div>
+              <div className="p-4">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {reportToView.content}
+                </ReactMarkdown>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Stats Cards */}
-      {stats && (
+      {stats ? (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-2xl font-bold text-primary">{stats.totalMessages}</div>
+            <div className="text-2xl font-bold text-primary">{stats!.totalMessages}</div>
             <div className="text-sm text-accent dark:text-dark-muted">Total Messages</div>
           </div>
           <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-2xl font-bold text-green-600">{stats.userMessages}</div>
+            <div className="text-2xl font-bold text-green-600">{stats!.userMessages}</div>
             <div className="text-sm text-accent dark:text-dark-muted">Your Messages</div>
           </div>
           <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-2xl font-bold text-blue-600">{stats.aiMessages}</div>
+            <div className="text-2xl font-bold text-blue-600">{stats!.aiMessages}</div>
             <div className="text-sm text-accent dark:text-dark-muted">AI Responses</div>
           </div>
           <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
             <div className="text-sm font-medium text-secondary dark:text-dark-text">
-              {stats.lastActivity ? formatTimestamp(stats.lastActivity) : 'No activity'}
+              {stats!.lastActivity ? formatTimestamp(stats!.lastActivity) : 'No activity'}
             </div>
             <div className="text-sm text-accent dark:text-dark-muted">Last Activity</div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Controls */}
       <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border mb-6">

@@ -16,10 +16,15 @@ const Home: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   
   const { user, token } = useAuth();
   const { 
     documents,
+    selectedDocumentIds,
+    selectedDocuments,
+    setSelectedDocumentIds,
+    toggleDocumentSelection,
     addDocuments,
     updateDocument,
     selectedPolicyType,
@@ -84,24 +89,29 @@ const Home: React.FC = () => {
 
   const policyTypes = [
     { value: 'general-liability', label: 'General Liability', description: 'Business liability protection' },
-    { value: 'commercial-property', label: 'Commercial Property', description: 'Building and equipment coverage' },
-    { value: 'workers-comp', label: 'Workers Compensation', description: 'Employee injury protection' },
+    { value: 'workers-comp', label: 'Workers Comp', description: 'Employee injury protection' },
+    { value: 'commercial-auto', label: 'Commercial Auto', description: 'Business vehicle coverage' },
+    { value: 'property', label: 'Property', description: 'Property insurance coverage' },
+    { value: 'epl', label: 'EPL', description: 'Employment practices liability' },
     { value: 'professional-liability', label: 'Professional Liability', description: 'Errors & omissions coverage' },
     { value: 'cyber-liability', label: 'Cyber Liability', description: 'Data breach and cyber protection' },
-    { value: 'commercial-auto', label: 'Commercial Auto', description: 'Business vehicle coverage' },
-    { value: 'business-interruption', label: 'Business Interruption', description: 'Lost income protection' },
+    { value: 'environmental-liability', label: 'Environmental Liability', description: 'Environmental risk coverage' },
     { value: 'directors-officers', label: 'Directors & Officers', description: 'Executive liability coverage' }
   ];
 
   const handleFilesUploaded = async (newFiles: UploadedFile[]) => {
     console.log('📄 Files uploaded:', newFiles.length);
-    
-    // Add documents locally
-    addDocuments(newFiles);
+    // Prompt user for custom titles
+    const filesWithTitles = newFiles.map(file => ({
+      ...file,
+      name: (window.prompt(`Enter a title for ${file.name}`, file.name) || file.name).trim()
+    }));
+    // Add documents locally with custom titles
+    addDocuments(filesWithTitles);
     setShowUploader(false);
 
     // For each new file, extract text via backend and update document
-    await Promise.all(newFiles.map(async (file) => {
+    await Promise.all(filesWithTitles.map(async (file) => {
       if (file.file) {
         try {
           const formData = new FormData();
@@ -128,7 +138,7 @@ const Home: React.FC = () => {
     // Update AI service context with document names
     aiService.updatePolicyContext([
       ...documents.map(d => d.name),
-      ...newFiles.map(f => f.name)
+      ...filesWithTitles.map(f => f.name)
     ]);
 
     // Do not automatically trigger analysis on upload
@@ -137,6 +147,18 @@ const Home: React.FC = () => {
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
   const handleSendMessage = async (message: string) => {
+    // If no documents are uploaded, prompt user to upload one
+    if (selectedDocuments.length === 0) {
+      const warningMsg: ChatMessage = {
+        id: generateMessageId(),
+        content: 'Please select a document to talk about.',
+        sender: 'ai',
+        timestamp: new Date(),
+        isStreaming: false
+      };
+      setChatHistory(prev => [...prev, warningMsg]);
+      return;
+    }
     // Add user message
     const userMessage: ChatMessage = {
       id: generateMessageId(),
@@ -162,16 +184,16 @@ const Home: React.FC = () => {
     setChatHistory((prev: ChatMessage[]) => [...prev, aiMessage]);
 
     try {
-      // Update AI service with current document context before sending message
-      if (documents.length > 0) {
-        const documentNames = documents.map(d => d.name);
+      // Update AI service with selected document context before sending message
+      if (selectedDocuments.length > 0) {
+        const documentNames = selectedDocuments.map(d => d.name);
         aiService.updatePolicyContext(documentNames);
       }
 
-      // Enhance the user message with context about uploaded documents
+      // Enhance the user message with context about selected documents
       let contextualMessage = message;
-      if (documents.length > 0) {
-        let contextInfo = `\n\nUser Context: I have uploaded ${documents.length} commercial insurance document(s): ${documents.map(d => d.name).join(', ')}.`;
+      if (selectedDocuments.length > 0) {
+        let contextInfo = `\n\nUser Context: I have selected ${selectedDocuments.length} commercial insurance document(s): ${selectedDocuments.map(d => d.name).join(', ')}.`;
         contextInfo += ` Policy type focus: ${policyTypes.find(t => t.value === selectedPolicyType)?.label || 'General Commercial'}.`;
         contextualMessage = message + contextInfo;
       }
@@ -234,33 +256,33 @@ const Home: React.FC = () => {
 
   // Handler for Risk Assessment using documentAnalysisPrompt and sendRawPrompt
   const handleRiskAssessment = async () => {
-    console.log('⚙️ handleRiskAssessment invoked. Documents:', documents);
-    if (documents.length === 0) return;
+    console.log('⚙️ handleRiskAssessment invoked. Selected Documents:', selectedDocuments);
+    if (selectedDocuments.length === 0) return;
     setIsLoading(true);
-    for (const doc of documents) {
+    for (const doc of selectedDocuments) {
       console.log('⚙️ Preparing analysis for document:', doc.name, 'extractedText length:', doc.extractedText?.length);
       const systemPrompt = documentAnalysisPrompt(doc.name);
       const documentText = `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`;
       const fullPrompt = `${systemPrompt}\n\n${documentText}`;
       console.log('⚙️ Full risk assessment prompt:', fullPrompt);
-      // Show the system prompt as a user message
-      const systemPromptMsg: ChatMessage = {
+      // Notify user of analysis action with title
+      const titleMsg: ChatMessage = {
         id: generateMessageId(),
-        content: systemPrompt,
+        content: `Document Analysis: ${doc.name}`,
         sender: 'user',
         timestamp: new Date()
       };
-      setChatHistory(prev => [...prev, systemPromptMsg]);
-      await addChatMessage(systemPromptMsg);
-      // Show full prompt (system + document text)
-      const contextPromptMsg: ChatMessage = {
+      setChatHistory(prev => [...prev, titleMsg]);
+      await addChatMessage(titleMsg);
+      // Also post the full prompt (system + document text) for visibility
+      const contextMsg: ChatMessage = {
         id: generateMessageId(),
         content: fullPrompt,
         sender: 'user',
         timestamp: new Date()
       };
-      setChatHistory(prev => [...prev, contextPromptMsg]);
-      await addChatMessage(contextPromptMsg);
+      setChatHistory(prev => [...prev, contextMsg]);
+      await addChatMessage(contextMsg);
       // AI message streaming
       const aiMessageId = generateMessageId();
       const aiMessage: ChatMessage = {
@@ -289,33 +311,34 @@ const Home: React.FC = () => {
 
   // Handler for Compare & Optimize that includes document summaries as context
   const handleComparePolicies = async () => {
-    if (documents.length < 2) return;
+    if (selectedDocuments.length < 2) return;
     setIsLoading(true);
     // Build document text context from extracted PDF text
-    const documentTexts = documents.map((doc) =>
+    const documentTexts = selectedDocuments.map((doc) =>
       `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`
     );
     // Build system prompt from comparePoliciesPrompt
-    const systemPrompt = comparePoliciesPrompt(documents.map(d => d.name));
+    const systemPrompt = comparePoliciesPrompt(selectedDocuments.map(d => d.name));
     const fullPrompt = `${systemPrompt}\n\n${documentTexts.join('\n\n')}`;
-    // Temporarily show the raw comparePoliciesPrompt as its own user message
-    const systemPromptMsg: ChatMessage = {
+    // Notify user of comparison action with title
+    const docNames = selectedDocuments.map(doc => doc.name).join(', ');
+    const titleMsg: ChatMessage = {
       id: generateMessageId(),
-      content: systemPrompt,
+      content: `Compare Policies: ${docNames}`,
       sender: 'user',
       timestamp: new Date()
     };
-    setChatHistory(prev => [...prev, systemPromptMsg]);
-    await addChatMessage(systemPromptMsg);
-    // Temporarily show full prompt context (system + documents)
-    const contextPromptMsg: ChatMessage = {
+    setChatHistory(prev => [...prev, titleMsg]);
+    await addChatMessage(titleMsg);
+    // Also post the full comparison prompt (system + document text) for visibility
+    const contextMsg: ChatMessage = {
       id: generateMessageId(),
       content: fullPrompt,
       sender: 'user',
       timestamp: new Date()
     };
-    setChatHistory(prev => [...prev, contextPromptMsg]);
-    await addChatMessage(contextPromptMsg);
+    setChatHistory(prev => [...prev, contextMsg]);
+    await addChatMessage(contextMsg);
 
     // Create AI message for streaming
     const aiMessageId = generateMessageId();
@@ -358,24 +381,51 @@ const Home: React.FC = () => {
               Upload your business insurance documents and let RiskNinja optimize your commercial coverage
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowOnboarding(true)}
-              className="text-primary hover:text-blue-600 text-sm font-medium flex items-center gap-2 transition-colors"
-              title="Show guided tour (F1)"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11,18H13V16H11V18M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z" />
-              </svg>
-              Help
-            </button>
-            <div className="text-xs text-accent dark:text-dark-muted">
-              <div>⌘K: Focus Chat</div>
-              <div>⌘U: Upload</div>
-              <div>F1: Help</div>
+        </div>
+
+        {/* Documents Selection Modal */}
+        {showDocumentsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white dark:bg-dark-surface text-black dark:text-white rounded-lg p-6 max-w-md w-full">
+              <h3 className="text-lg font-bold mb-4">Select Documents</h3>
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {documents.map(doc => (
+                  <label key={doc.id} className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedDocumentIds.includes(doc.id)}
+                      onChange={() => toggleDocumentSelection(doc.id)}
+                      className="form-checkbox h-4 w-4"
+                    />
+                    <span className="truncate">{doc.name}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="mt-4 flex justify-between items-center">
+                <button
+                  onClick={() => { setSelectedDocumentIds([]); setShowDocumentsModal(false); }}
+                  className="px-4 py-2 bg-red-500 text-white rounded"
+                >
+                  Clear All
+                </button>
+                <div className="flex space-x-2">
+                  <button
+                    onClick={() => setShowDocumentsModal(false)}
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => setShowDocumentsModal(false)}
+                    className="px-4 py-2 bg-primary text-white rounded"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Policy Type Selector */}
         <div className="px-4 py-4" data-tour="policy-selector">
@@ -465,13 +515,21 @@ const Home: React.FC = () => {
         </div>
 
         {/* Uploaded Documents Status */}
-        {documents.length > 0 && (
+        {selectedDocuments.length > 0 && (
           <div className="px-4 py-4">
-            <h3 className="text-lg font-bold text-secondary dark:text-dark-text mb-3">
-              Uploaded Documents ({documents.length})
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-secondary dark:text-dark-text">
+                Uploaded Documents ({selectedDocuments.length})
+              </h3>
+              <button
+                onClick={() => setSelectedDocumentIds([])}
+                className="text-red-500 dark:text-red-400 text-sm font-medium hover:underline"
+              >
+                Clear Documents
+              </button>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {documents.map((doc) => (
+              {selectedDocuments.map((doc) => (
                 <div key={doc.id} className="bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border rounded-lg p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1 min-w-0">
@@ -497,23 +555,23 @@ const Home: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div 
               className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border border-blue-200 dark:border-blue-700 rounded-lg p-6 cursor-pointer hover:shadow-md transition-all"
-              onClick={() => setShowUploader(true)}
+              onClick={() => setShowDocumentsModal(true)}
             >
               <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center mb-4">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
                   <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                 </svg>
               </div>
-              <h3 className="font-semibold text-secondary dark:text-dark-text mb-2">Upload Commercial Policies</h3>
+              <h3 className="font-semibold text-secondary dark:text-dark-text mb-2">Documents</h3>
               <p className="text-accent dark:text-dark-muted text-sm">
-                Upload your business insurance documents for AI analysis
+                Select documents for your AI chat context
               </p>
             </div>
 
             <div 
               className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-700 rounded-lg p-6 cursor-pointer hover:shadow-md transition-all"
               onClick={() => {
-                if (documents.length > 0) {
+                if (selectedDocuments.length > 0) {
                   handleRiskAssessment();
                 }
               }}
@@ -525,7 +583,7 @@ const Home: React.FC = () => {
               </div>
               <h3 className="font-semibold text-secondary dark:text-dark-text mb-2">Get Risk Assessment</h3>
               <p className="text-accent dark:text-dark-muted text-sm">
-                {documents.length > 0 ? 'Click to analyze your policies via AI chat' : 'Upload documents first to receive intelligent risk analysis'}
+                {selectedDocuments.length > 0 ? 'Click to analyze your policies via AI chat' : 'Upload documents first to receive intelligent risk analysis'}
               </p>
             </div>
 
@@ -540,7 +598,7 @@ const Home: React.FC = () => {
               </div>
               <h3 className="font-semibold text-secondary dark:text-dark-text mb-2">Compare & Optimize</h3>
               <p className="text-accent dark:text-dark-muted text-sm">
-                {documents.length > 0 
+                {selectedDocuments.length > 0 
                   ? 'Click to get AI-powered policy comparison and optimization' 
                   : 'Upload multiple policies to enable AI comparison'
                 }
@@ -550,7 +608,7 @@ const Home: React.FC = () => {
         </div>
 
         {/* Business Intelligence Dashboard */}
-        {documents.length > 0 && (
+        {selectedDocuments.length > 0 && (
           <div className="px-4 py-6" data-tour="dashboard">
             <Dashboard />
           </div>
@@ -596,7 +654,7 @@ const Home: React.FC = () => {
           </div>
           
           {/* Context-aware suggestions */}
-          {documents.length > 0 && (
+          {selectedDocuments.length > 0 && (
             <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
               <h4 className="font-medium text-secondary dark:text-dark-text mb-2">
                 💡 Try asking about your {policyTypes.find(t => t.value === selectedPolicyType)?.label.toLowerCase()} policies:

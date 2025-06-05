@@ -24,7 +24,7 @@ ANALYSIS REQUIREMENTS:
    - Risk mitigation suggestions
 
 RESPONSE FORMAT:
-Provide a JSON-like structured analysis focusing on:
+Provide a report structured analysis focusing on:
 - Factual policy details
 - Objective risk assessment
 - Actionable recommendations

@@ -1,17 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
 import { useDocuments, PolicyDocument } from '../contexts/DocumentContext';
 import { aiService } from '../services/aiService';
+import { ChatMessage } from '../components/ChatInterface';
+import { generateReportPrompt } from '../prompts/generateReportPrompt';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import html2pdf from 'html2pdf.js';
+import { useAuth } from '../contexts/AuthContext';
 
 const Policies: React.FC = () => {
+  const { token } = useAuth();
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
   const [showUploader, setShowUploader] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<PolicyDocument | null>(null);
-  
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [reportContent, setReportContent] = useState<string>('');
+  const [reportError, setReportError] = useState<string | null>(null);
   const { 
     documents, 
     addDocuments, 
-    removeDocument
+    removeDocument,
+    updateDocument,
+    addChatMessage,
+    setChatHistory
   } = useDocuments();
+  const navigate = useNavigate();
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [tempName, setTempName] = useState<string>('');
+  const location = useLocation();
+  // Ref for the report content to generate PDF
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  // If navigated with openDocId state, auto-open that document
+  useEffect(() => {
+    const state = (location.state as any) || {};
+    if (state.openDocId) {
+      const doc = documents.find(d => d.id === state.openDocId);
+      if (doc) {
+        setSelectedDocument(doc);
+      }
+    }
+  }, [location.state, documents]);
 
   const handleFilesUploaded = async (newFiles: UploadedFile[]) => {
     console.log('📄 Files uploaded:', newFiles.length);
@@ -19,7 +51,30 @@ const Policies: React.FC = () => {
     addDocuments(newFiles);
     setShowUploader(false);
 
-    // Update AI service context
+    // Extract text for each new file via backend
+    await Promise.all(newFiles.map(async (file) => {
+      if (file.file) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file.file);
+          const res = await fetch(`${API_BASE_URL}/documents/extract`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData,
+          });
+          if (res.ok) {
+            const data = await res.json();
+            updateDocument(file.id, { extractedText: data.text });
+          } else {
+            console.error('Policies page extraction failed:', await res.text());
+          }
+        } catch (err) {
+          console.error('Error extracting document in Policies page:', err);
+        }
+      }
+    }));
+
+    // Update AI service context with document names
     const allDocumentNames = documents.map(d => d.name).concat(newFiles.map(f => f.name));
     aiService.updatePolicyContext(allDocumentNames);
   };
@@ -50,26 +105,30 @@ const Policies: React.FC = () => {
     }
   };
 
-  const handleGenerateReport = (doc: PolicyDocument) => {
+  const handleGenerateReport = async (doc: PolicyDocument) => {
+    setShowReportModal(true);
+    setReportError(null);
+    setReportContent('');
+    setIsGeneratingReport(true);
+    // Build prompt including full extracted document text if available
+    const basePrompt = generateReportPrompt(doc.name, {
+      insights: doc.insights || [],
+      recommendations: doc.recommendations || [],
+      riskScore: doc.riskScore || 0
+    });
+    // Always include the extracted document text (or empty) in the prompt
+    const fullPrompt = `DOCUMENT TEXT:\n${doc.extractedText ?? ''}\n\n${basePrompt}`;
+    console.log('🔍 Full report prompt:', fullPrompt);
     try {
-      // Generate a comprehensive report for the document
-      const reportContent = generateReportContent(doc);
-      
-      // Create and download the report as a text file
-      const blob = new Blob([reportContent], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${doc.name.replace(/\.[^/.]+$/, "")}_analysis_report.txt`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      console.log('✅ Report generated successfully for:', doc.name);
-    } catch (error) {
-      console.error('❌ Report generation failed:', error);
-      alert('Failed to generate report. Please try again.');
+      await aiService.sendRawPrompt(fullPrompt, (chunk: string) => {
+        // Replace content with the latest full chunk rather than appending
+        setReportContent(chunk);
+      });
+    } catch (err) {
+      console.error('Report generation failed:', err);
+      setReportError('Failed to generate report. Please try again.');
+    } finally {
+      setIsGeneratingReport(false);
     }
   };
 
@@ -306,7 +365,7 @@ const Policies: React.FC = () => {
                 <div className="bg-slate-50 rounded-lg p-4 mb-6">
                   <h4 className="font-medium text-[#0e161b] mb-3">AI-Generated Insights</h4>
                   <ul className="space-y-2">
-                    {selectedDocument.insights.map((insight, index) => (
+                    {selectedDocument.insights.map((insight: string, index: number) => (
                       <li key={index} className="flex items-start gap-2 text-sm text-[#4e7a97]">
                         <div className="w-1.5 h-1.5 bg-[#1993e5] rounded-full mt-2 flex-shrink-0"></div>
                         <span>{insight}</span>
@@ -321,7 +380,7 @@ const Policies: React.FC = () => {
                 <div className="bg-slate-50 rounded-lg p-4 mb-6">
                   <h4 className="font-medium text-[#0e161b] mb-3">AI Recommendations</h4>
                   <ul className="space-y-2">
-                    {selectedDocument.recommendations.map((recommendation, index) => (
+                    {selectedDocument.recommendations.map((recommendation: string, index: number) => (
                       <li key={index} className="flex items-start gap-2 text-sm text-[#4e7a97]">
                         <div className="w-1.5 h-1.5 bg-green-500 rounded-full mt-2 flex-shrink-0"></div>
                         <span>{recommendation}</span>
@@ -405,6 +464,70 @@ const Policies: React.FC = () => {
           </div>
         )}
 
+        {/* Report Modal */}
+        {showReportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-dark-surface rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center p-4 border-b">
+                <h3 className="text-lg font-bold text-secondary dark:text-dark-text">Generated Report</h3>
+                <button
+                  onClick={() => setShowReportModal(false)}
+                  className="text-secondary dark:text-white hover:text-accent dark:hover:text-dark-muted px-2 py-1 rounded"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-4">
+                {isGeneratingReport ? (
+                  <div className="text-center text-sm text-secondary dark:text-dark-text">Generating report...</div>
+                ) : reportError ? (
+                  <div className="text-center text-sm text-red-600">{reportError}</div>
+                ) : (
+                  <div ref={reportRef} className="text-sm leading-relaxed text-secondary bg-white p-2 rounded">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {reportContent}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+              {!isGeneratingReport && !reportError && (
+                <div className="flex justify-end p-4 border-t gap-2">
+                  <button
+                    onClick={async () => {
+                      // Save report to chat history as an AI message
+                      const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
+                      const message: ChatMessage = { id, content: reportContent, sender: 'ai', timestamp: new Date() };
+                      await addChatMessage(message);
+                      // Generate and download PDF
+                      if (reportRef.current) {
+                        html2pdf()
+                          .from(reportRef.current)
+                          .set({ filename: `report_${Date.now()}.pdf`, margin: 10 })
+                          .save();
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
+                  >Download as PDF</button>
+                  <button
+                    onClick={async () => {
+                      const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
+                      // Use static report content to save for history
+                      const savedContent = generateReportContent(selectedDocument!);
+                      const message: ChatMessage = { id, content: savedContent, sender: 'ai', timestamp: new Date() };
+                      await addChatMessage(message);
+                      // Close modal and clear local chat, then navigate to chat history
+                      setShowReportModal(false);
+                      setChatHistory([]);
+                      navigate('/chat-history');
+                    }}
+                    className="px-4 py-2 bg-secondary text-white rounded-lg text-sm"
+                  >Save to Chat</button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {documents.length === 0 ? (
           // Empty State
           <div className="px-4 py-8">
@@ -433,43 +556,50 @@ const Policies: React.FC = () => {
           <div className="px-4 space-y-4">
             {documents.map((doc) => (
               <div key={doc.id} className="bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border rounded-lg p-6 hover:shadow-sm transition-shadow">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="text-lg font-medium text-[#0e161b] dark:text-dark-text truncate mb-2">
-                      {doc.name}
-                    </h3>
-                    <div className="flex items-center gap-4 text-sm text-[#4e7a97] dark:text-dark-muted">
-                      <span>Uploaded {formatDate(doc.uploadedAt)}</span>
-                      <span>•</span>
-                      <span>{(doc.size / (1024 * 1024)).toFixed(2)} MB</span>
-                      <span>•</span>
-                      <span className={`font-medium ${getRiskScoreColor(doc.riskScore)}`}>
-                        {getRiskScoreLabel(doc.riskScore)}
-                      </span>
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex-1 min-w-0">
+                      {editingDocId === doc.id ? (
+                        <input
+                          type="text"
+                          className="w-full text-lg font-medium text-[#0e161b] dark:text-dark-text bg-white dark:bg-dark-bg px-2 py-1 border border-[#d0dee7] dark:border-dark-border rounded mb-2 focus:outline-none"
+                          value={tempName}
+                          onChange={(e) => setTempName(e.target.value)}
+                          onBlur={() => {
+                            updateDocument(doc.id, { name: tempName });
+                            setEditingDocId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              updateDocument(doc.id, { name: tempName });
+                              setEditingDocId(null);
+                            }
+                          }}
+                          autoFocus
+                        />
+                      ) : (
+                        <h3 className="text-lg font-medium text-[#0e161b] dark:text-dark-text truncate">
+                          {doc.name}
+                        </h3>
+                      )}
                     </div>
+                    {editingDocId !== doc.id && (
+                      <button
+                        onClick={() => { setEditingDocId(doc.id); setTempName(doc.name); }}
+                        className="text-xs text-primary hover:text-blue-600 ml-2"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
-                  
-                  <div className="flex items-center gap-3 ml-4">
-                    <button
-                      onClick={() => handleViewDetails(doc)}
-                      className="text-[#1993e5] hover:text-[#1470b8] text-sm font-medium transition-colors"
-                    >
-                      View Details
-                    </button>
-                    <button
-                      onClick={() => handleDownload(doc)}
-                      className="text-[#1993e5] hover:text-[#1470b8] text-sm font-medium transition-colors"
-                    >
-                      Download
-                    </button>
-                    <button
-                      onClick={() => removeDocument(doc.id)}
-                      className="text-[#4e7a97] hover:text-red-600 transition-colors"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-                      </svg>
-                    </button>
+                  <div className="flex items-center gap-4 text-sm text-[#4e7a97] dark:text-dark-muted">
+                    <span>Uploaded {formatDate(doc.uploadedAt)}</span>
+                    <span>•</span>
+                    <span>{(doc.size / (1024 * 1024)).toFixed(2)} MB</span>
+                    <span>•</span>
+                    <span className={`font-medium ${getRiskScoreColor(doc.riskScore)}`}>
+                      {getRiskScoreLabel(doc.riskScore)}
+                    </span>
                   </div>
                 </div>
 
@@ -488,7 +618,7 @@ const Policies: React.FC = () => {
                   <div className="mb-4">
                     <h4 className="text-sm font-medium text-[#0e161b] mb-2">AI Insights</h4>
                     <ul className="space-y-1">
-                      {doc.insights.map((insight, index) => (
+                      {doc.insights.map((insight: string, index: number) => (
                         <li key={index} className="flex items-center gap-2 text-sm text-[#4e7a97]">
                           <div className="w-1.5 h-1.5 bg-[#1993e5] rounded-full"></div>
                           {insight}
@@ -503,7 +633,7 @@ const Policies: React.FC = () => {
                   <div className="mb-4">
                     <h4 className="text-sm font-medium text-[#0e161b] mb-2">AI Recommendations</h4>
                     <ul className="space-y-1">
-                      {doc.recommendations.map((recommendation, index) => (
+                      {doc.recommendations.map((recommendation: string, index: number) => (
                         <li key={index} className="flex items-start gap-2 text-sm text-[#4e7a97]">
                           <div className="w-1.5 h-1.5 bg-success rounded-full mt-1.5 flex-shrink-0"></div>
                           {recommendation}
@@ -545,6 +675,12 @@ const Policies: React.FC = () => {
                         <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                       </svg>
                       Generate Report
+                    </button>
+                    <button
+                      onClick={() => removeDocument(doc.id)}
+                      className="px-4 py-2 border border-red-600 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
+                    >
+                      Delete
                     </button>
                   </div>
                 )}

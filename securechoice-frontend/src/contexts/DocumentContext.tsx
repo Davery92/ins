@@ -30,6 +30,11 @@ interface DocumentContextType {
   clearChatHistory: () => Promise<void>;
   exportChatHistory: () => void;
   startNewSession: () => void;
+  selectedDocumentIds: string[];
+  setSelectedDocumentIds: React.Dispatch<React.SetStateAction<string[]>>;
+  toggleDocumentSelection: (docId: string) => void;
+  selectedDocuments: PolicyDocument[];
+  clearDocuments: () => void;
 }
 
 const DocumentContext = createContext<DocumentContextType | undefined>(undefined);
@@ -50,46 +55,72 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api
 
 export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) => {
   const [sessionId, setSessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
-  const [documents, setDocuments] = useState<PolicyDocument[]>([]);
+  const { token, user } = useAuth();
+  const storageKeyDocs = `riskninja-documents-${user?.id}`;
+  const storageKeySel = `riskninja-selected-documents-${user?.id}`;
+  const [documents, setDocuments] = useState<PolicyDocument[]>(() => {
+    const stored = localStorage.getItem(storageKeyDocs);
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored) as any[];
+        return parsed.map(d => ({
+          ...d,
+          uploadedAt: new Date(d.uploadedAt)
+        }));
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+  useEffect(() => {
+    localStorage.setItem(storageKeyDocs, JSON.stringify(documents));
+  }, [documents, storageKeyDocs]);
   const [selectedPolicyType, setSelectedPolicyType] = useState<string>('general-liability');
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const { token, user } = useAuth();
-
-  // Load chat history from backend when user logs in
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>(() => {
+    const stored = localStorage.getItem(storageKeySel);
+    if (stored) {
+      try {
+        return JSON.parse(stored) as string[];
+      } catch {}
+    }
+    // By default, select all existing documents
+    return documents.map(d => d.id);
+  });
   useEffect(() => {
-    if (token && user) {
-      loadChatHistory();
-    } else {
-      setChatHistory([]);
-    }
-  }, [token, user]);
-
-  const loadChatHistory = async () => {
-    if (!token) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/chat/history`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        // Parse timestamp strings into Date objects
-        const parsedMessages = data.messages.map((msg: any) => ({
-          ...msg,
-          timestamp: new Date(msg.timestamp),
-        }));
-        setChatHistory(parsedMessages);
-      }
-    } catch (error) {
-      console.error('Failed to load chat history:', error);
-    }
+    setSelectedDocumentIds(prevIds => {
+      const docIds = documents.map(doc => doc.id);
+      const filteredPrev = prevIds.filter(id => docIds.includes(id));
+      const newIds = docIds.filter(id => !filteredPrev.includes(id));
+      return [...filteredPrev, ...newIds];
+    });
+  }, [documents]);
+  useEffect(() => {
+    localStorage.setItem(storageKeySel, JSON.stringify(selectedDocumentIds));
+  }, [selectedDocumentIds, storageKeySel]);
+  const toggleDocumentSelection = (docId: string) => {
+    setSelectedDocumentIds(prev =>
+      prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
+    );
+  };
+  const selectedDocuments = documents.filter(doc => selectedDocumentIds.includes(doc.id));
+  const clearDocuments = () => {
+    setDocuments([]);
+    setSelectedDocumentIds([]);
   };
 
+  useEffect(() => {
+    setChatHistory([]);
+  }, []);
+
   const addDocuments = (newFiles: UploadedFile[]) => {
-    const newDocs: PolicyDocument[] = newFiles.map(file => ({
+    // Prevent duplicates by file name
+    const unique = newFiles.filter(file => !documents.some(d => d.name === file.name));
+    if (unique.length < newFiles.length) {
+      alert('Some files were skipped because a document with the same name already exists.');
+    }
+    const newDocs: PolicyDocument[] = unique.map(file => ({
       ...file,
       insights: [],
       recommendations: [],
@@ -206,8 +237,11 @@ Export completed by RiskNinja AI
   };
 
   const startNewSession = () => {
-    setChatHistory([]);
+    // Clear both local and server-side chat history
+    clearChatHistory();
+    // Reset uploaded documents
     setDocuments([]);
+    // Start a fresh session
     setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
   };
 
@@ -226,7 +260,12 @@ Export completed by RiskNinja AI
     addChatMessage,
     clearChatHistory,
     exportChatHistory,
-    startNewSession
+    startNewSession,
+    selectedDocumentIds,
+    setSelectedDocumentIds,
+    toggleDocumentSelection,
+    selectedDocuments,
+    clearDocuments
   };
 
   return (
