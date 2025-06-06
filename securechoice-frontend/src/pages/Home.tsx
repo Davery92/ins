@@ -184,28 +184,35 @@ const Home: React.FC = () => {
     setChatHistory((prev: ChatMessage[]) => [...prev, aiMessage]);
 
     try {
+      // Build conversation context including all previous messages
+      const historyForContext = [...chatHistory, userMessage];
+      const conversationString = historyForContext.map(msg =>
+        `${msg.sender === 'user' ? 'User' : 'AI'}: ${msg.content}`
+      ).join('\n');
+
+      // Include selected documents context
+      let promptMessage = conversationString;
+      if (selectedDocuments.length > 0) {
+        const docContext = `\n\nUser Document Context: I have selected ${selectedDocuments.length} commercial insurance document(s): ${selectedDocuments.map(d => d.name).join(', ')}. Policy type focus: ${policyTypes.find(t => t.value === selectedPolicyType)?.label || 'General Commercial'}.`;
+        promptMessage += docContext;
+        // Append extracted text of each selected document for AI context
+        selectedDocuments.forEach(doc => {
+          promptMessage += `\n\nDocument: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`;
+        });
+      }
+
       // Update AI service with selected document context before sending message
       if (selectedDocuments.length > 0) {
         const documentNames = selectedDocuments.map(d => d.name);
         aiService.updatePolicyContext(documentNames);
       }
 
-      // Enhance the user message with context about selected documents
-      let contextualMessage = message;
-      if (selectedDocuments.length > 0) {
-        let contextInfo = `\n\nUser Context: I have selected ${selectedDocuments.length} commercial insurance document(s): ${selectedDocuments.map(d => d.name).join(', ')}.`;
-        contextInfo += ` Policy type focus: ${policyTypes.find(t => t.value === selectedPolicyType)?.label || 'General Commercial'}.`;
-        contextualMessage = message + contextInfo;
-      }
-
       let finalAiContent = '';
-      await aiService.sendMessage(contextualMessage, (streamContent) => {
+      await aiService.sendMessage(promptMessage, (streamContent) => {
         finalAiContent = streamContent;
-        setChatHistory((prev: ChatMessage[]) => 
-          prev.map(msg => 
-            msg.id === aiMessageId 
-              ? { ...msg, content: streamContent }
-              : msg
+        setChatHistory(prev =>
+          prev.map(msg =>
+            msg.id === aiMessageId ? { ...msg, content: streamContent } : msg
           )
         );
       });
@@ -274,15 +281,6 @@ const Home: React.FC = () => {
       };
       setChatHistory(prev => [...prev, titleMsg]);
       await addChatMessage(titleMsg);
-      // Also post the full prompt (system + document text) for visibility
-      const contextMsg: ChatMessage = {
-        id: generateMessageId(),
-        content: fullPrompt,
-        sender: 'user',
-        timestamp: new Date()
-      };
-      setChatHistory(prev => [...prev, contextMsg]);
-      await addChatMessage(contextMsg);
       // AI message streaming
       const aiMessageId = generateMessageId();
       const aiMessage: ChatMessage = {
@@ -330,15 +328,6 @@ const Home: React.FC = () => {
     };
     setChatHistory(prev => [...prev, titleMsg]);
     await addChatMessage(titleMsg);
-    // Also post the full comparison prompt (system + document text) for visibility
-    const contextMsg: ChatMessage = {
-      id: generateMessageId(),
-      content: fullPrompt,
-      sender: 'user',
-      timestamp: new Date()
-    };
-    setChatHistory(prev => [...prev, contextMsg]);
-    await addChatMessage(contextMsg);
 
     // Create AI message for streaming
     const aiMessageId = generateMessageId();

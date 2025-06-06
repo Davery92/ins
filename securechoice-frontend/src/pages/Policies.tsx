@@ -222,14 +222,16 @@ const Policies: React.FC = () => {
     return report;
   };
 
-  const formatDate = (date: Date) => {
+  const formatDate = (date: string | Date) => {
+    const dt = new Date(date);
+    if (isNaN(dt.getTime())) return '';
     return new Intl.DateTimeFormat('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
-    }).format(date);
+    }).format(dt);
   };
 
   const getRiskScoreColor = (score?: number) => {

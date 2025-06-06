@@ -56,6 +56,31 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }).format(date);
   };
 
+  // Copy text to clipboard with fallback for insecure contexts
+  const copyToClipboard = (text: string) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => console.log('Copied to clipboard'))
+        .catch(err => console.error('Clipboard write failed', err));
+    } else {
+      // Fallback for older browsers or insecure contexts
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        console.log('Copied to clipboard (fallback)');
+      } catch (err) {
+        console.error('Fallback copy failed', err);
+      }
+      document.body.removeChild(textarea);
+    }
+  };
+
   return (
     <div className={`flex flex-col h-full ${className}`}>
       {/* Messages Area */}
@@ -111,12 +136,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       <span className="inline-block w-2 h-4 bg-current ml-1 animate-pulse"></span>
                     )}
                   </div>
-                  <div className={`text-xs mt-1 ${
+                  <div className={`flex items-center mt-1 text-xs ${
                     message.sender === 'user' 
                       ? 'text-blue-100' 
                       : 'text-accent dark:text-dark-muted'
                   }`}>
-                    {formatTime(message.timestamp)}
+                    <span>{formatTime(message.timestamp)}</span>
+                    {message.sender === 'ai' && !message.isStreaming && (
+                      <button
+                        onClick={() => copyToClipboard(message.content)}
+                        className="ml-2 p-1 hover:text-primary"
+                        title="Copy response"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

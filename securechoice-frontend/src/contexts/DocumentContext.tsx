@@ -53,52 +53,22 @@ interface DocumentProviderProps {
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) => {
+export function DocumentProvider({ children }: DocumentProviderProps): JSX.Element {
   const [sessionId, setSessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
   const { token, user } = useAuth();
-  const storageKeyDocs = `riskninja-documents-${user?.id}`;
+  const [documents, setDocuments] = useState<PolicyDocument[]>([]);
   const storageKeySel = `riskninja-selected-documents-${user?.id}`;
-  const [documents, setDocuments] = useState<PolicyDocument[]>(() => {
-    const stored = localStorage.getItem(storageKeyDocs);
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as any[];
-        return parsed.map(d => ({
-          ...d,
-          uploadedAt: new Date(d.uploadedAt)
-        }));
-      } catch {
-        return [];
+  const [selectedPolicyType, setSelectedPolicyType] = useState<string>('general-liability');
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>(() => {
+    if (user) {
+      const stored = localStorage.getItem(storageKeySel);
+      if (stored) {
+        try { return JSON.parse(stored) as string[]; } catch {} 
       }
     }
     return [];
   });
-  useEffect(() => {
-    localStorage.setItem(storageKeyDocs, JSON.stringify(documents));
-  }, [documents, storageKeyDocs]);
-  const [selectedPolicyType, setSelectedPolicyType] = useState<string>('general-liability');
-  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
-  const [selectedDocumentIds, setSelectedDocumentIds] = useState<string[]>(() => {
-    const stored = localStorage.getItem(storageKeySel);
-    if (stored) {
-      try {
-        return JSON.parse(stored) as string[];
-      } catch {}
-    }
-    // By default, select all existing documents
-    return documents.map(d => d.id);
-  });
-  useEffect(() => {
-    setSelectedDocumentIds(prevIds => {
-      const docIds = documents.map(doc => doc.id);
-      const filteredPrev = prevIds.filter(id => docIds.includes(id));
-      const newIds = docIds.filter(id => !filteredPrev.includes(id));
-      return [...filteredPrev, ...newIds];
-    });
-  }, [documents]);
-  useEffect(() => {
-    localStorage.setItem(storageKeySel, JSON.stringify(selectedDocumentIds));
-  }, [selectedDocumentIds, storageKeySel]);
   const toggleDocumentSelection = (docId: string) => {
     setSelectedDocumentIds(prev =>
       prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
@@ -106,7 +76,6 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
   };
   const selectedDocuments = documents.filter(doc => selectedDocumentIds.includes(doc.id));
   const clearDocuments = () => {
-    setDocuments([]);
     setSelectedDocumentIds([]);
   };
 
@@ -114,24 +83,85 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
     setChatHistory([]);
   }, []);
 
-  const addDocuments = (newFiles: UploadedFile[]) => {
-    // Prevent duplicates by file name
-    const unique = newFiles.filter(file => !documents.some(d => d.name === file.name));
-    if (unique.length < newFiles.length) {
-      alert('Some files were skipped because a document with the same name already exists.');
+  useEffect(() => {
+    if (!token) return;
+    fetch(`${API_BASE_URL}/documents`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.json())
+      .then((docs: PolicyDocument[]) => {
+        setDocuments(docs);
+        if (user) {
+          const stored = localStorage.getItem(storageKeySel);
+          if (stored === null) {
+            setSelectedDocumentIds(docs.map(d => d.id));
+          }
+        }
+      })
+      .catch(console.error);
+  }, [token, user, storageKeySel]);
+
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem(storageKeySel, JSON.stringify(selectedDocumentIds));
     }
-    const newDocs: PolicyDocument[] = unique.map(file => ({
-      ...file,
-      insights: [],
-      recommendations: [],
-      riskScore: undefined
-    }));
-    
-    setDocuments(prev => [...prev, ...newDocs]);
+  }, [selectedDocumentIds, storageKeySel]);
+
+  const addDocuments = async (newFiles: UploadedFile[]) => {
+    if (!token) return;
+    for (const file of newFiles) {
+      let fileName = file.name;
+      let skipFile = false;
+      while (true) {
+        const form = new FormData();
+        form.append('file', file.file!);
+        form.append('name', fileName);
+        try {
+          const res = await fetch(`${API_BASE_URL}/documents`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: form
+          });
+          if (res.ok) {
+            const created: PolicyDocument = await res.json();
+            setDocuments(prev => [...prev, created]);
+            setSelectedDocumentIds(prev => [...prev, created.id]);
+            break;
+          } else if (res.status === 409) {
+            const newName = window.prompt(
+              `A document named "${fileName}" already exists. Please enter a new name:`,
+              fileName
+            )?.trim();
+            if (!newName) {
+              skipFile = true;
+              break;
+            }
+            fileName = newName;
+            continue;
+          } else {
+            console.error('Failed to upload document:', await res.text());
+            break;
+          }
+        } catch (err) {
+          console.error('Upload error:', err);
+          break;
+        }
+      }
+      if (skipFile) continue;
+    }
   };
 
   const removeDocument = (docId: string) => {
-    setDocuments(prev => prev.filter(doc => doc.id !== docId));
+    if (!token) return;
+    fetch(`${API_BASE_URL}/documents/${docId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(() => {
+        setDocuments(prev => prev.filter(doc => doc.id !== docId));
+        setSelectedDocumentIds(prev => prev.filter(id => id !== docId));
+      })
+      .catch(console.error);
   };
 
   const updateDocument = (docId: string, updates: Partial<PolicyDocument>) => {
@@ -152,10 +182,8 @@ export const DocumentProvider: React.FC<DocumentProviderProps> = ({ children }) 
   };
 
   const addChatMessage = async (message: ChatMessage): Promise<void> => {
-    // Add to local state immediately for UI responsiveness
     setChatHistory(prev => prev.some(msg => msg.id === message.id) ? prev : [...prev, message]);
 
-    // Save to backend if user is authenticated
     if (token) {
       try {
         await fetch(`${API_BASE_URL}/chat/message`, {
@@ -237,11 +265,8 @@ Export completed by RiskNinja AI
   };
 
   const startNewSession = () => {
-    // Clear both local and server-side chat history
     clearChatHistory();
-    // Reset uploaded documents
-    setDocuments([]);
-    // Start a fresh session
+    clearDocuments();
     setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
   };
 
@@ -273,4 +298,4 @@ Export completed by RiskNinja AI
       {children}
     </DocumentContext.Provider>
   );
-}; 
+} 

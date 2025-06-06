@@ -133,10 +133,12 @@ PolicyDocumentModel.init({
       model: UserModel,
       key: 'id',
     },
+    unique: 'user_document_name',
   },
   name: {
     type: DataTypes.STRING,
     allowNull: false,
+    unique: 'user_document_name',
   },
   originalName: {
     type: DataTypes.STRING,
@@ -193,6 +195,9 @@ PolicyDocumentModel.init({
   modelName: 'PolicyDocument',
   tableName: 'policy_documents',
   timestamps: false,
+  indexes: [
+    { unique: true, fields: ['userId', 'name'], name: 'user_document_name' }
+  ]
 });
 
 // Define associations

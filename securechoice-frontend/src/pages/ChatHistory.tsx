@@ -316,7 +316,7 @@ const ChatHistory: React.FC = () => {
             {sessions.map(session => (
               <div key={session.sessionId} className="border rounded-lg">
                 <button
-                  className="w-full text-left px-4 py-2 bg-gray-100 dark:bg-dark-border"
+                  className="w-full text-left px-4 py-2 bg-gray-100 dark:bg-dark-border text-secondary dark:text-white"
                   onClick={() => setExpandedSessionId(
                     expandedSessionId === session.sessionId ? null : session.sessionId
                   )}
