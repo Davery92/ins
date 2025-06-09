@@ -2,7 +2,6 @@
   "name": "riskninja-frontend",
   "version": "0.1.0",
   "private": true,
-  "proxy": "http://10.185.1.128:5000",
   "dependencies": {
     "@aws-amplify/ui-react": "^6.11.2",
     "@tailwindcss/forms": "^0.5.9",

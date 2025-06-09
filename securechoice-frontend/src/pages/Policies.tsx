@@ -13,7 +13,7 @@ import { useAuth } from '../contexts/AuthContext';
 const Policies: React.FC = () => {
   const { token, user } = useAuth();
   const licenseActive = user?.status === 'active';
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  const API_BASE_URL = '/api';
   const [showUploader, setShowUploader] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<PolicyDocument | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);

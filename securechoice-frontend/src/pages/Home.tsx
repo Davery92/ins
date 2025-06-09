@@ -13,7 +13,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import html2pdf from 'html2pdf.js';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin + '/api';
+const API_BASE_URL = '/api';
 
 const Home: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);

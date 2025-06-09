@@ -3,11 +3,21 @@ import path from 'path';
 
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../../data/riskninja.db');
 
-export const sequelize = new Sequelize({
-  dialect: 'sqlite',
-  storage: dbPath,
-  logging: process.env.NODE_ENV === 'development' ? console.log : false,
-});
+// Initialize Sequelize based on environment
+const dialect = process.env.DB_DIALECT || 'sqlite';
+export const sequelize =
+  dialect === 'sqlite'
+    ? new Sequelize({
+        dialect: 'sqlite',
+        storage: dbPath,
+        logging: process.env.NODE_ENV === 'development' ? console.log : false,
+      })
+    : new Sequelize(
+        `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
+        {
+          logging: process.env.NODE_ENV === 'development' ? console.log : false,
+        }
+      );
 
 // Company Model
 export class CompanyModel extends Model {

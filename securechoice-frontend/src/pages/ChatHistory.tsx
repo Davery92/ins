@@ -38,7 +38,7 @@ const ChatHistory: React.FC = () => {
   const navigate = useNavigate();
   const { documents, setChatHistory, setSelectedPolicyType, setSelectedDocumentIds } = useDocuments();
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin + '/api';
+  const API_BASE_URL = '/api';
 
   useEffect(() => {
     if (token) {

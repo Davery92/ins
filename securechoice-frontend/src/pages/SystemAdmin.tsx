@@ -23,7 +23,7 @@ interface Company {
   updatedAt: string;
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin + '/api';
+const API_BASE_URL = '/api';
 
 const SystemAdmin: React.FC = () => {
   const { user, token } = useAuth();

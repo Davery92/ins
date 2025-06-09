@@ -33,7 +33,9 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://10.185.1.128:3000',
   // Allow same-host origin for direct backend UI calls
-  'http://10.185.1.128:5000'
+  'http://10.185.1.128:5000',
+  'http://riskninja.avery.cloud',
+  'https://riskninja.avery.cloud'
 ];
 
 const corsOptions: cors.CorsOptions = {
@@ -135,4 +137,4 @@ const startServer = async () => {
   }
 };
 
-startServer(); 
+startServer();

@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./riskninja-backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./riskninja-backend/.env
+    ports:
+      - "5000:5000"
+    environment:
+      - NODE_ENV=development
+
+  frontend:
+    build:
+      context: ./securechoice-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    environment: []
+
+  nginx:
+    # ... existing configuration ...
+
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=yourpassword
+      - POSTGRES_DB=riskninja
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+volumes:
+  db_data:
+
