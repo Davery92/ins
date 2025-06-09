@@ -9,6 +9,11 @@ const Header: React.FC = () => {
   const { user, logout } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  // Safely derive initials, fallback to empty
+  const initials = user
+    ? `${user.firstName?.[0] || ''}${user.lastName?.[0] || ''}`
+    : '';
+
   const isActive = (path: string) => {
     return location.pathname === path ? 'text-primary' : 'text-secondary dark:text-dark-text';
   };
@@ -56,6 +61,14 @@ const Header: React.FC = () => {
             <Link className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/support')}`} to="/support">
               Support
             </Link>
+            {user?.role === 'admin' && (
+              <Link
+                className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/admin')}`}
+                to="/admin"
+              >
+                Admin
+              </Link>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />
@@ -67,7 +80,7 @@ const Header: React.FC = () => {
                   className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
                 >
                   <div className="w-8 h-8 bg-primary text-white rounded-full flex items-center justify-center text-sm font-medium">
-                    {user.firstName[0]}{user.lastName[0]}
+                    {initials}
                   </div>
                   <span className="text-sm font-medium text-secondary dark:text-dark-text">
                     {user.firstName}

@@ -9,7 +9,9 @@ import Home from './pages/Home';
 import Policies from './pages/Policies';
 import ChatHistory from './pages/ChatHistory';
 import Support from './pages/Support';
+import Admin from './pages/Admin';
 import Login from './pages/Login';
+import RegisterAdmin from './pages/RegisterAdmin';
 
 function App() {
   return (
@@ -21,6 +23,7 @@ function App() {
               <Routes>
                 {/* Public route - Login */}
                 <Route path="/login" element={<Login />} />
+                <Route path="/register-admin" element={<RegisterAdmin />} />
                 
                 {/* Protected routes */}
                 <Route path="/*" element={
@@ -33,6 +36,7 @@ function App() {
                           <Route path="/policies" element={<Policies />} />
                           <Route path="/chat-history" element={<ChatHistory />} />
                           <Route path="/support" element={<Support />} />
+                          <Route path="/admin" element={<Admin />} />
                         </Routes>
                       </div>
                     </div>

@@ -13,6 +13,7 @@ import authRoutes from './routes/auth';
 import chatRoutes from './routes/chat';
 import documentsRoutes from './routes/documents';
 import researchRoutes from './routes/research';
+import adminRoutes from './routes/admin';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -93,6 +94,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/research', researchRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);

@@ -5,6 +5,9 @@ interface User {
   email: string;
   firstName: string;
   lastName: string;
+  status: 'pending' | 'active' | 'disabled';
+  role: 'user' | 'admin';
+  companyId: string;
 }
 
 interface AuthContextType {
@@ -12,6 +15,7 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, firstName: string, lastName: string) => Promise<void>;
+  registerAdmin: (companyName: string, domain: string, email: string, password: string, firstName: string, lastName: string) => Promise<void>;
   logout: () => void;
   isLoading: boolean;
   error: string | null;
@@ -123,6 +127,38 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const registerAdmin = async (
+    companyName: string,
+    domain: string,
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string
+  ): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/register-admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyName, domain, email, password, firstName, lastName }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Admin registration failed');
+      }
+      setToken(data.token);
+      setUser(data.user);
+      localStorage.setItem('riskninja-token', data.token);
+      localStorage.setItem('riskninja-user', JSON.stringify(data.user));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Admin registration failed');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = (): void => {
     setUser(null);
     setToken(null);
@@ -136,6 +172,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     token,
     login,
     register,
+    registerAdmin,
     logout,
     isLoading,
     error,

@@ -9,6 +9,43 @@ export const sequelize = new Sequelize({
   logging: process.env.NODE_ENV === 'development' ? console.log : false,
 });
 
+// Company Model
+export class CompanyModel extends Model {
+  public id!: string;
+  public name!: string;
+  public domain!: string; // The unique domain for the company
+  public licenseCount!: number; // Number of purchased licenses
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
+}
+
+CompanyModel.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  domain: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true,
+  },
+  licenseCount: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+}, {
+  sequelize,
+  modelName: 'Company',
+  tableName: 'companies',
+  timestamps: true,
+});
+
 // User Model
 export class UserModel extends Model {
   public id!: string;
@@ -16,6 +53,9 @@ export class UserModel extends Model {
   public firstName!: string;
   public lastName!: string;
   public password!: string;
+  public status!: 'pending' | 'active' | 'disabled';
+  public role!: 'user' | 'admin';
+  public companyId!: string;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 }
@@ -45,6 +85,24 @@ UserModel.init({
   password: {
     type: DataTypes.STRING,
     allowNull: false,
+  },
+  status: {
+    type: DataTypes.ENUM('pending', 'active', 'disabled'),
+    allowNull: false,
+    defaultValue: 'pending',
+  },
+  role: {
+    type: DataTypes.ENUM('user', 'admin'),
+    allowNull: false,
+    defaultValue: 'user',
+  },
+  companyId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: CompanyModel,
+      key: 'id',
+    },
   },
 }, {
   sequelize,
@@ -207,13 +265,17 @@ ChatMessageModel.belongsTo(UserModel, { foreignKey: 'userId', as: 'user' });
 UserModel.hasMany(PolicyDocumentModel, { foreignKey: 'userId', as: 'policyDocuments' });
 PolicyDocumentModel.belongsTo(UserModel, { foreignKey: 'userId', as: 'user' });
 
+// New multi-tenant associations
+CompanyModel.hasMany(UserModel, { foreignKey: 'companyId', as: 'users' });
+UserModel.belongsTo(CompanyModel, { foreignKey: 'companyId', as: 'company' });
+
 // Initialize database
 export const initDatabase = async (): Promise<void> => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully.');
     
-    await sequelize.sync({ force: false });
+    await sequelize.sync({ alter: true });
     console.log('✅ Database tables created successfully.');
   } catch (error) {
     console.error('❌ Unable to connect to database:', error);

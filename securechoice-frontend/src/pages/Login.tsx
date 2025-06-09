@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 const Login: React.FC = () => {
@@ -216,6 +216,17 @@ const Login: React.FC = () => {
                 {isLogin ? 'Create a new account' : 'Sign in to existing account'}
               </button>
             </div>
+
+            {isLogin && (
+              <div className="mt-2 text-center">
+                <Link
+                  to="/register-admin"
+                  className="text-primary hover:text-blue-500 font-medium transition-colors"
+                >
+                  Register as Admin
+                </Link>
+              </div>
+            )}
           </div>
         </div>
 

@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import pdfParse from 'pdf-parse';
 import { authenticateToken } from '../middleware/auth';
+import { checkLicense } from '../middleware/checkLicense';
 import { PolicyDocumentModel } from '../models';
 
 const router = Router();
@@ -11,6 +12,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 router.post(
   '/extract',
   authenticateToken,
+  checkLicense,
   upload.single('file'),
   async (
     req: Request & { file?: Express.Multer.File },
@@ -38,6 +40,7 @@ router.post(
 router.get(
   '/',
   authenticateToken,
+  checkLicense,
   async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const docs = await PolicyDocumentModel.findAll({ where: { userId } });
@@ -49,6 +52,7 @@ router.get(
 router.post(
   '/',
   authenticateToken,
+  checkLicense,
   upload.single('file'),
   async (req: Request & { file?: Express.Multer.File; body: { name?: string } }, res: Response): Promise<void> => {
     try {
@@ -91,6 +95,7 @@ router.post(
 router.delete(
   '/:id',
   authenticateToken,
+  checkLicense,
   async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user.id;

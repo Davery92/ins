@@ -26,7 +26,7 @@ export const authenticateToken = async (
     
     // Verify user still exists
     const user = await UserModel.findByPk(decoded.userId, {
-      attributes: ['id', 'email', 'firstName', 'lastName']
+      attributes: ['id', 'email', 'firstName', 'lastName', 'status', 'role', 'companyId']
     });
 
     if (!user) {
@@ -39,6 +39,9 @@ export const authenticateToken = async (
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
+      status: user.status,
+      role: user.role,
+      companyId: user.companyId,
     };
 
     next();

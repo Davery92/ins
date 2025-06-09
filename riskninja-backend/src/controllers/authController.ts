@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 const bcrypt = require('bcryptjs');
 import jwt from 'jsonwebtoken';
-import { UserModel } from '../models';
+import { UserModel, CompanyModel, sequelize } from '../models';
 import { LoginRequest, RegisterRequest } from '../types';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -16,6 +16,19 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
     if (password.length < 6) {
       res.status(400).json({ error: 'Password must be at least 6 characters' });
+      return;
+    }
+
+    // Domain Matching Logic
+    const userDomain = email.split('@')[1];
+    if (!userDomain) {
+      res.status(400).json({ error: 'Invalid email address format.' });
+      return;
+    }
+
+    const company = await CompanyModel.findOne({ where: { domain: userDomain } });
+    if (!company) {
+      res.status(400).json({ error: 'Your company is not registered. Please contact your administrator.' });
       return;
     }
 
@@ -36,6 +49,9 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       password: hashedPassword,
       firstName,
       lastName,
+      companyId: company.id,
+      role: 'user',
+      status: 'pending',
     });
 
     // Generate JWT token
@@ -51,13 +67,15 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     );
 
     res.status(201).json({
-      message: 'User registered successfully',
+      message: 'User registered successfully. Account is pending activation.',
       token,
       user: {
         id: user.id,
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        status: user.status,
+        role: user.role,
       },
     });
   } catch (error) {
@@ -110,6 +128,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
+        status: user.status,
+        role: user.role,
+        companyId: user.companyId,
       },
     });
   } catch (error) {
@@ -127,5 +148,89 @@ export const getProfile = async (req: Request, res: Response): Promise<void> => 
   } catch (error) {
     console.error('Get profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
+// Admin registration: create company and admin user
+export const registerAdmin = async (req: Request, res: Response): Promise<void> => {
+  const { companyName, domain, email, password, firstName, lastName } = req.body;
+
+  if (!companyName || !domain || !email || !password || !firstName || !lastName) {
+    res.status(400).json({ error: 'All fields are required for admin registration.' });
+    return;
+  }
+
+  const transaction = await sequelize.transaction();
+
+  try {
+    // Find or create company by domain
+    let company = await CompanyModel.findOne({ where: { domain }, transaction });
+    if (!company) {
+      company = await CompanyModel.create({ name: companyName, domain }, { transaction });
+    }
+
+    // Fetch JWT secret once
+    const jwtSecret = process.env.JWT_SECRET;
+    if (!jwtSecret) throw new Error('JWT_SECRET not configured');
+
+    // Check if a user with this email already exists
+    let adminUser = await UserModel.findOne({ where: { email }, transaction });
+    if (adminUser) {
+      // Promote existing user to admin
+      adminUser.firstName = firstName;
+      adminUser.lastName = lastName;
+      adminUser.role = 'admin';
+      adminUser.status = 'active';
+      adminUser.companyId = company.id;
+      await adminUser.save({ transaction });
+      await transaction.commit();
+
+      res.status(200).json({
+        message: 'User elevated to admin successfully.',
+        token: jwt.sign({ userId: adminUser.id, email: adminUser.email }, jwtSecret, { expiresIn: '7d' }),
+        user: {
+          id: adminUser.id,
+          email: adminUser.email,
+          firstName: adminUser.firstName,
+          lastName: adminUser.lastName,
+          status: adminUser.status,
+          role: adminUser.role
+        },
+      });
+      return;
+    }
+
+    // No existing user: create a new admin user
+    // Hash password
+    const saltRounds = 12;
+    const hashedPassword = await bcrypt.hash(password, saltRounds);
+
+    const newAdmin = await UserModel.create({
+      email,
+      password: hashedPassword,
+      firstName,
+      lastName,
+      companyId: company.id,
+      role: 'admin',
+      status: 'active',
+    }, { transaction });
+
+    await transaction.commit();
+    res.status(201).json({
+      message: 'Admin account and company created successfully.',
+      token: jwt.sign({ userId: newAdmin.id, email: newAdmin.email }, jwtSecret, { expiresIn: '7d' }),
+      user: {
+        id: newAdmin.id,
+        email: newAdmin.email,
+        firstName: newAdmin.firstName,
+        lastName: newAdmin.lastName,
+        status: newAdmin.status,
+        role: newAdmin.role
+      },
+    });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Admin registration error:', error);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
   }
 }; 
