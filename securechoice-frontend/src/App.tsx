@@ -12,6 +12,7 @@ import Support from './pages/Support';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
 import RegisterAdmin from './pages/RegisterAdmin';
+import SystemAdmin from './pages/SystemAdmin';
 
 function App() {
   return (
@@ -37,6 +38,7 @@ function App() {
                           <Route path="/chat-history" element={<ChatHistory />} />
                           <Route path="/support" element={<Support />} />
                           <Route path="/admin" element={<Admin />} />
+                          <Route path="/sysadmin" element={<SystemAdmin />} />
                         </Routes>
                       </div>
                     </div>

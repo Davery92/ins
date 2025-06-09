@@ -14,6 +14,7 @@ import chatRoutes from './routes/chat';
 import documentsRoutes from './routes/documents';
 import researchRoutes from './routes/research';
 import adminRoutes from './routes/admin';
+import sysadminRoutes from './routes/sysadmin';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -27,7 +28,14 @@ app.use((req, res, next) => {
   next();
 });
 
-const allowedOrigins = ['http://localhost:3000', 'http://10.185.1.128:3000'];
+// CORS origins allowed to make requests
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://10.185.1.128:3000',
+  // Allow same-host origin for direct backend UI calls
+  'http://10.185.1.128:5000'
+];
+
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     if (!origin || allowedOrigins.indexOf(origin) !== -1) {
@@ -95,6 +103,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/research', researchRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/sysadmin', sysadminRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);

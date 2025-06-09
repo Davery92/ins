@@ -567,14 +567,8 @@ Comprehensive/Collision: Actual Cash Value`,
     try {
       // Directly call Gemini API with the provided prompt
       const response = await this.callGeminiAPI(rawPrompt);
-      // Simulate streaming
-      const words = response.split(' ');
-      let currentContent = '';
-      for (let i = 0; i < words.length; i++) {
-        currentContent += (i > 0 ? ' ' : '') + words[i];
-        onStreamUpdate(currentContent);
-        await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 70));
-      }
+      // Stream full response immediately without delay
+      onStreamUpdate(response);
       return response;
     } catch (error) {
       console.error('Raw prompt AI service error:', error);

@@ -40,15 +40,34 @@ export const getCompanyUsers = async (req: AuthRequest, res: Response): Promise<
     return;
   }
 
+  // Determine the companyId: use req.user.companyId, or fallback on the user's email domain
+  let companyId = req.user.companyId;
+  if (!companyId) {
+    const parts = req.user.email.split('@');
+    if (parts.length !== 2) {
+      res.status(400).json({ error: 'Invalid user email format' });
+      return;
+    }
+    const domain = parts[1];
+    const companyRecord = await CompanyModel.findOne({ where: { domain } });
+    if (!companyRecord) {
+      res.status(400).json({ error: 'Company not found for user\'s email domain' });
+      return;
+    }
+    companyId = companyRecord.id;
+    // Persist the derived companyId on the user record for future requests
+    await UserModel.update({ companyId }, { where: { id: req.user.id } });
+  }
+
   try {
     const users = await UserModel.findAll({
-      where: { companyId: req.user.companyId },
+      where: { companyId },
       attributes: ['id', 'email', 'firstName', 'lastName', 'status', 'role', 'createdAt'],
       order: [['createdAt', 'DESC']],
     });
 
     // Fetch company to get total licenses
-    const company = await CompanyModel.findByPk(req.user.companyId);
+    const company = await CompanyModel.findByPk(companyId);
     const licenseCount = company?.licenseCount ?? 0;
     const used = users.filter(u => u.status === 'active').length;
     const available = licenseCount - used >= 0 ? licenseCount - used : 0;

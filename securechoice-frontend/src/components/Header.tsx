@@ -69,6 +69,14 @@ const Header: React.FC = () => {
                 Admin
               </Link>
             )}
+            {user?.email === process.env.REACT_APP_GLOBAL_ADMIN_EMAIL && (
+              <Link
+                className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/sysadmin')}`}
+                to="/sysadmin"
+              >
+                SysAdmin
+              </Link>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <ThemeToggle />

@@ -508,12 +508,8 @@ const Policies: React.FC = () => {
               {!isGeneratingReport && !reportError && (
                 <div className="flex justify-end p-4 border-t gap-2">
                   <button
-                    onClick={async () => {
-                      // Save report to chat history as an AI message
-                      const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
-                      const message: ChatMessage = { id, content: reportContent, sender: 'ai', timestamp: new Date() };
-                      await addChatMessage(message);
-                      // Generate and download PDF
+                    onClick={() => {
+                      // Download current report as PDF
                       if (reportRef.current) {
                         html2pdf()
                           .from(reportRef.current)
@@ -522,13 +518,14 @@ const Policies: React.FC = () => {
                       }
                     }}
                     className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
-                  >Download as PDF</button>
+                  >Download PDF</button>
                   <button
                     onClick={async () => {
+                      // Save report to saved reports
                       const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2,9)}`;
-                      // Use static report content to save for history
-                      const savedContent = generateReportContent(selectedDocument!);
-                      const message: ChatMessage = { id, content: savedContent, sender: 'ai', timestamp: new Date() };
+                      const header = 'RISKNINJA POLICY ANALYSIS REPORT';
+                      const contentToSave = `${header}\n${reportContent}`;
+                      const message: ChatMessage = { id, content: contentToSave, sender: 'ai', timestamp: new Date() };
                       await addChatMessage(message);
                       // Close modal and clear local chat, then navigate to chat history
                       setShowReportModal(false);
@@ -536,7 +533,7 @@ const Policies: React.FC = () => {
                       navigate('/chat-history');
                     }}
                     className="px-4 py-2 bg-secondary text-white rounded-lg text-sm"
-                  >Save to Chat</button>
+                  >Save</button>
                 </div>
               )}
             </div>

@@ -239,9 +239,11 @@ const ChatHistory: React.FC = () => {
                 </button>
               </div>
               <div className="p-4">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {reportToView.content}
-                </ReactMarkdown>
+                <div className="text-sm leading-relaxed text-secondary bg-white p-2 rounded">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {reportToView.content}
+                  </ReactMarkdown>
+                </div>
               </div>
             </div>
           </div>

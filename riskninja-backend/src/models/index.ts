@@ -274,8 +274,14 @@ export const initDatabase = async (): Promise<void> => {
   try {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully.');
-    
-    await sequelize.sync({ alter: true });
+
+    if (sequelize.getDialect() === 'sqlite') {
+      // SQLite: create tables if not exist, skip alter to avoid backup failures
+      await sequelize.sync();
+    } else {
+      // Other databases: alter tables to match models
+      await sequelize.sync({ alter: true });
+    }
     console.log('✅ Database tables created successfully.');
   } catch (error) {
     console.error('❌ Unable to connect to database:', error);
