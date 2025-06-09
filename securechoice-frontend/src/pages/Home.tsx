@@ -88,6 +88,22 @@ const Home: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Prevent AI features for non-licensed users
+  if (user?.status !== 'active') {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <div className="text-center">
+          <h2 className="text-lg font-bold text-secondary dark:text-dark-text mb-2">
+            License Required
+          </h2>
+          <p className="text-accent dark:text-dark-muted">
+            Your account is pending activation by an administrator. AI features are disabled.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const handleOnboardingComplete = () => {
     localStorage.setItem('riskninja-onboarding-completed', 'true');
     setShowOnboarding(false);

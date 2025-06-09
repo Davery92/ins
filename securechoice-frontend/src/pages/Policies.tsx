@@ -11,7 +11,8 @@ import html2pdf from 'html2pdf.js';
 import { useAuth } from '../contexts/AuthContext';
 
 const Policies: React.FC = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const licenseActive = user?.status === 'active';
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
   const [showUploader, setShowUploader] = useState(false);
   const [selectedDocument, setSelectedDocument] = useState<PolicyDocument | null>(null);
@@ -449,12 +450,24 @@ const Policies: React.FC = () => {
                   </svg>
                   Download Original
                 </button>
-                <button
-                  onClick={() => handleGenerateReport(selectedDocument)}
-                  className="px-4 py-2 bg-[#1993e5] text-white rounded-lg text-sm font-medium hover:bg-[#1470b8] transition-colors"
-                >
-                  Generate Report
-                </button>
+                {licenseActive ? (
+                  <button
+                    onClick={() => handleGenerateReport(selectedDocument)}
+                    className="px-4 py-2 bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border text-[#0e161b] dark:text-dark-text rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-dark-bg transition-colors flex items-center gap-2"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    Generate Report
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium cursor-not-allowed"
+                  >
+                    License Required
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedDocument(null)}
                   className="px-4 py-2 border border-[#d0dee7] text-[#0e161b] rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors"
@@ -669,15 +682,24 @@ const Policies: React.FC = () => {
                 {/* Action Buttons */}
                 {doc.status === 'completed' && (
                   <div className="mt-4 pt-4 border-t border-[#d0dee7] dark:border-dark-border flex gap-3">
-                    <button 
-                      onClick={() => handleGenerateReport(doc)}
-                      className="px-4 py-2 bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border text-[#0e161b] dark:text-dark-text rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-dark-bg transition-colors flex items-center gap-2"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                      </svg>
-                      Generate Report
-                    </button>
+                    {licenseActive ? (
+                      <button 
+                        onClick={() => handleGenerateReport(doc)}
+                        className="px-4 py-2 bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border text-[#0e161b] dark:text-dark-text rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-dark-bg transition-colors flex items-center gap-2"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                        </svg>
+                        Generate Report
+                      </button>
+                    ) : (
+                      <button 
+                        disabled
+                        className="px-4 py-2 bg-gray-500 text-white rounded-lg text-sm font-medium cursor-not-allowed"
+                      >
+                        License Required
+                      </button>
+                    )}
                     <button
                       onClick={() => removeDocument(doc.id)}
                       className="px-4 py-2 border border-red-600 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
