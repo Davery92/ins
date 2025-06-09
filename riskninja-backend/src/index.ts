@@ -12,9 +12,13 @@ import { initDatabase } from './models';
 import authRoutes from './routes/auth';
 import chatRoutes from './routes/chat';
 import documentsRoutes from './routes/documents';
+import researchRoutes from './routes/research';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Trust the first proxy to properly handle X-Forwarded-* headers (needed for rate-limit)
+app.set('trust proxy', 1);
 
 // VERY FIRST: Log all incoming requests before any other middleware
 app.use((req, res, next) => {
@@ -88,6 +92,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/documents', documentsRoutes);
+app.use('/api/research', researchRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { useDocuments } from '../contexts/DocumentContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -33,7 +35,10 @@ const ChatHistory: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [reportToView, setReportToView] = useState<ChatMessage | null>(null);
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+  const navigate = useNavigate();
+  const { documents, setChatHistory, setSelectedPolicyType, setSelectedDocumentIds } = useDocuments();
+
+  const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin + '/api';
 
   useEffect(() => {
     if (token) {
@@ -151,6 +156,22 @@ const ChatHistory: React.FC = () => {
 
   const formatTimestamp = (timestamp: string) => {
     return new Date(timestamp).toLocaleString();
+  };
+
+  const resumeSession = (session: { sessionId: string; messages: ChatMessage[] }) => {
+    const resumed = session.messages.map(msg => ({
+      id: msg.id,
+      content: msg.content,
+      sender: msg.sender,
+      timestamp: new Date(msg.timestamp),
+      isStreaming: false
+    }));
+    setSelectedPolicyType(session.messages[0].context?.policyType ?? 'general-liability');
+    const docNames = session.messages[0].context?.documentNames || [];
+    const matchingIds = documents.filter(doc => docNames.includes(doc.name)).map(doc => doc.id);
+    setSelectedDocumentIds(matchingIds);
+    setChatHistory(resumed);
+    navigate('/');
   };
 
   if (!token) {
@@ -325,6 +346,14 @@ const ChatHistory: React.FC = () => {
                 </button>
                 {expandedSessionId === session.sessionId && (
                   <div className="px-4 py-2">
+                    <div className="flex justify-end mb-2">
+                      <button
+                        onClick={() => resumeSession(session)}
+                        className="px-3 py-1 bg-blue-600 text-white rounded"
+                      >
+                        Continue Chat
+                      </button>
+                    </div>
                     {session.messages.map(message => (
                       <div key={message.id} className="p-4">
                         <div className="flex items-start gap-3">

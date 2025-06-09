@@ -106,10 +106,12 @@ PolicyDocumentModel.init({
             model: UserModel,
             key: 'id',
         },
+        unique: 'user_document_name',
     },
     name: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,
+        unique: 'user_document_name',
     },
     originalName: {
         type: sequelize_1.DataTypes.STRING,
@@ -166,6 +168,9 @@ PolicyDocumentModel.init({
     modelName: 'PolicyDocument',
     tableName: 'policy_documents',
     timestamps: false,
+    indexes: [
+        { unique: true, fields: ['userId', 'name'], name: 'user_document_name' }
+    ]
 });
 // Define associations
 UserModel.hasMany(ChatMessageModel, { foreignKey: 'userId', as: 'chatMessages' });

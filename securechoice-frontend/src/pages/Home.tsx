@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ChatInterface, { ChatMessage } from '../components/ChatInterface';
 import ApiStatus from '../components/ApiStatus';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
@@ -9,14 +9,25 @@ import { useAuth } from '../contexts/AuthContext';
 import { aiService } from '../services/aiService';
 import { documentAnalysisPrompt, comparePoliciesPrompt } from '../prompts';
 import { policyPrompts, defaultPolicyPrompts } from '../prompts/policyPrompts';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import html2pdf from 'html2pdf.js';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin + '/api';
 
 const Home: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
+  const [mode, setMode] = useState<'policyChat' | 'research'>('policyChat');
+  const [researchUrl, setResearchUrl] = useState('');
+  // Research report modal state
+  const [showResearchModal, setShowResearchModal] = useState(false);
+  const [researchReportContent, setResearchReportContent] = useState<string>('');
+  const [researchReportError, setResearchReportError] = useState<string | null>(null);
+  const [isGeneratingResearch, setIsGeneratingResearch] = useState(false);
+  const researchReportRef = useRef<HTMLDivElement>(null);
   
   const { user, token } = useAuth();
   const { 
@@ -358,6 +369,37 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleGenerateReport = async (): Promise<void> => {
+    if (!researchUrl) return;
+    setShowResearchModal(true);
+    setResearchReportError(null);
+    setResearchReportContent('');
+    setIsGeneratingResearch(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/research/generate?preview=true`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ url: researchUrl }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setResearchReportContent(data.markdown);
+      } else {
+        const errText = await res.text();
+        console.error('Failed to generate research report', errText);
+        setResearchReportError('Failed to generate research report');
+      }
+    } catch (err) {
+      console.error('Error generating research report', err);
+      setResearchReportError('Error generating research report');
+    } finally {
+      setIsGeneratingResearch(false);
+    }
+  };
+
   return (
     <div className="px-40 flex flex-1 justify-center py-5 dark:bg-dark-bg transition-colors duration-200">
       <div className="layout-content-container flex flex-col max-w-[960px] flex-1">
@@ -416,54 +458,150 @@ const Home: React.FC = () => {
           </div>
         )}
 
-        {/* Policy Type Selector */}
-        <div className="px-4 py-4" data-tour="policy-selector">
-          <div className="bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border rounded-lg p-6">
-            <h3 className="text-lg font-bold text-secondary dark:text-dark-text mb-3">
-              Select Policy Type
-            </h3>
-            <p className="text-accent dark:text-dark-muted text-sm mb-4">
-              Choose the type of commercial insurance you're analyzing for targeted AI insights
-            </p>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {policyTypes.map((type) => (
-                <button
-                  key={type.value}
-                  onClick={() => setSelectedPolicyType(type.value)}
-                  className={`p-3 rounded-lg border text-left transition-all ${
-                    selectedPolicyType === type.value
-                      ? 'bg-primary border-primary text-white'
-                      : 'bg-white dark:bg-dark-bg border-[#d0dee7] dark:border-dark-border text-secondary dark:text-dark-text hover:border-primary hover:bg-blue-50 dark:hover:bg-blue-900/20'
-                  }`}
-                >
-                  <div className="font-medium text-sm mb-1">{type.label}</div>
-                  <div className={`text-xs ${
-                    selectedPolicyType === type.value 
-                      ? 'text-blue-100' 
-                      : 'text-accent dark:text-dark-muted'
-                  }`}>
-                    {type.description}
-                  </div>
-                </button>
-              ))}
-            </div>
-            
-            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-              <div className="flex items-center gap-2 text-primary dark:text-blue-300">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M13,9H11V7H13M13,17H11V11H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z" />
-                </svg>
-                <span className="text-sm font-medium">
-                  Selected: {policyTypes.find(t => t.value === selectedPolicyType)?.label}
-                </span>
-              </div>
-              <p className="text-xs text-primary dark:text-blue-300 mt-1">
-                AI analysis will be optimized for {selectedPolicyType} commercial insurance policies
-              </p>
-            </div>
+        {/* Mode Selector */}
+        <div className="px-4 py-4">
+          <div className="bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border rounded-lg p-6 flex items-center gap-4">
+            <label htmlFor="mode" className="font-medium text-secondary dark:text-dark-text">
+              Mode:
+            </label>
+            <select
+              id="mode"
+              value={mode}
+              onChange={e => setMode(e.target.value as 'policyChat' | 'research')}
+              className="border rounded px-2 py-1 pr-8"
+            >
+              <option value="policyChat">Policy Chat</option>
+              <option value="research">Research</option>
+            </select>
           </div>
         </div>
+
+        {mode === 'policyChat' && (
+          <div className="px-4 py-4" data-tour="policy-selector">
+            <div className="bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border rounded-lg p-6">
+              <h3 className="text-lg font-bold text-secondary dark:text-dark-text mb-3">
+                Select Policy Type
+              </h3>
+              <p className="text-accent dark:text-dark-muted text-sm mb-4">
+                Choose the type of commercial insurance you're analyzing for targeted AI insights
+              </p>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {policyTypes.map((type) => (
+                  <button
+                    key={type.value}
+                    onClick={() => setSelectedPolicyType(type.value)}
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      selectedPolicyType === type.value
+                        ? 'bg-primary border-primary text-white'
+                        : 'bg-white dark:bg-dark-bg border-[#d0dee7] dark:border-dark-border text-secondary dark:text-dark-text hover:border-primary hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                    }`}
+                  >
+                    <div className="font-medium text-sm mb-1">{type.label}</div>
+                    <div className={`text-xs ${
+                      selectedPolicyType === type.value 
+                        ? 'text-blue-100' 
+                        : 'text-accent dark:text-dark-muted'
+                    }`}>
+                      {type.description}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              
+              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-center gap-2 text-primary dark:text-blue-300">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13,9H11V7H13M13,17H11V11H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,6A4,4 0 0,0 8,10H10A2,2 0 0,1 12,8A2,2 0 0,1 14,10C14,12 11,11.75 11,15H13C13,12.75 16,12.5 16,10A4,4 0 0,0 12,6Z" />
+                  </svg>
+                  <span className="text-sm font-medium">
+                    Selected: {policyTypes.find(t => t.value === selectedPolicyType)?.label}
+                  </span>
+                </div>
+                <p className="text-xs text-primary dark:text-blue-300 mt-1">
+                  AI analysis will be optimized for {selectedPolicyType} commercial insurance policies
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {mode === 'research' && (
+          <div className="px-4 py-4">
+            <div className="bg-white dark:bg-dark-surface border border-[#d0dee7] dark:border-dark-border rounded-lg p-6">
+              <h3 className="text-lg font-bold text-secondary dark:text-dark-text mb-3">
+                Generate Research Report
+              </h3>
+              <input
+                type="text"
+                placeholder="Enter URL"
+                value={researchUrl}
+                onChange={e => setResearchUrl(e.target.value)}
+                className="w-full border rounded px-3 py-2 mb-3"
+              />
+              <button
+                onClick={handleGenerateReport}
+                disabled={isGeneratingResearch}
+                className={`bg-primary hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-colors ${isGeneratingResearch ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {isGeneratingResearch ? 'Generating...' : 'Generate'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Research Report Modal */}
+        {showResearchModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-dark-surface rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center p-4 border-b">
+                <h3 className="text-lg font-bold text-secondary dark:text-dark-text">Research Report</h3>
+                <button
+                  onClick={() => setShowResearchModal(false)}
+                  className="text-secondary dark:text-dark-text hover:text-accent px-2 py-1 rounded"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="p-4">
+                {isGeneratingResearch ? (
+                  <div className="text-center text-sm text-secondary dark:text-dark-text">Generating report...</div>
+                ) : researchReportError ? (
+                  <div className="text-center text-sm text-red-600">{researchReportError}</div>
+                ) : (
+                  <div ref={researchReportRef} className="prose max-w-none text-secondary dark:text-dark-text bg-white dark:bg-dark-surface p-2 rounded">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {researchReportContent}
+                    </ReactMarkdown>
+                  </div>
+                )}
+              </div>
+              {!isGeneratingResearch && !researchReportError && (
+                <div className="flex justify-end p-4 border-t gap-2">
+                  <button
+                    onClick={() => {
+                      if (researchReportRef.current) {
+                        html2pdf()
+                          .from(researchReportRef.current)
+                          .set({ filename: `research-report_${Date.now()}.pdf`, margin: 10 })
+                          .save();
+                      }
+                    }}
+                    className="px-4 py-2 bg-primary text-white rounded-lg text-sm"
+                  >
+                    Download as PDF
+                  </button>
+                  <button
+                    onClick={() => setShowResearchModal(false)}
+                    className="px-4 py-2 bg-secondary text-white rounded-lg text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* File Upload Section */}
         <div className="px-4 py-6" data-tour="upload-area">
@@ -604,7 +742,7 @@ const Home: React.FC = () => {
         )}
 
         {/* AI Chat Interface */}
-        <div className="px-4 py-6 flex flex-col flex-1 overflow-hidden" data-tour="chat-interface">
+        <div className="px-4 py-6 flex flex-col flex-1 min-h-0 overflow-y-auto" data-tour="chat-interface">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-secondary dark:text-dark-text text-[22px] font-bold leading-tight tracking-[-0.015em]">
               Chat with RiskNinja AI
@@ -663,7 +801,7 @@ const Home: React.FC = () => {
             </div>
           )}
           
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <ChatInterface
               messages={chatHistory}
               onSendMessage={handleSendMessage}

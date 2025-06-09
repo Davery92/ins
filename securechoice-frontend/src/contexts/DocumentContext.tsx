@@ -51,7 +51,7 @@ interface DocumentProviderProps {
   children: ReactNode;
 }
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || window.location.origin + '/api';
 
 export function DocumentProvider({ children }: DocumentProviderProps): JSX.Element {
   const [sessionId, setSessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
@@ -74,7 +74,7 @@ export function DocumentProvider({ children }: DocumentProviderProps): JSX.Eleme
       prev.includes(docId) ? prev.filter(id => id !== docId) : [...prev, docId]
     );
   };
-  const selectedDocuments = documents.filter(doc => selectedDocumentIds.includes(doc.id));
+  const selectedDocuments = Array.isArray(documents) ? documents.filter(doc => selectedDocumentIds.includes(doc.id)) : [];
   const clearDocuments = () => {
     setSelectedDocumentIds([]);
   };
@@ -89,12 +89,13 @@ export function DocumentProvider({ children }: DocumentProviderProps): JSX.Eleme
       headers: { 'Authorization': `Bearer ${token}` }
     })
       .then(res => res.json())
-      .then((docs: PolicyDocument[]) => {
-        setDocuments(docs);
+      .then((docs: PolicyDocument[] | any) => {
+        const docsArray = Array.isArray(docs) ? docs : [];
+        setDocuments(docsArray);
         if (user) {
           const stored = localStorage.getItem(storageKeySel);
           if (stored === null) {
-            setSelectedDocumentIds(docs.map(d => d.id));
+            setSelectedDocumentIds(docsArray.map(d => d.id));
           }
         }
       })
@@ -265,7 +266,7 @@ Export completed by RiskNinja AI
   };
 
   const startNewSession = () => {
-    clearChatHistory();
+    setChatHistory([]);
     clearDocuments();
     setSessionId(`session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);
   };
