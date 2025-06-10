@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -11,28 +9,45 @@ services:
       - "5000:5000"
     environment:
       - NODE_ENV=development
+      - DATABASE_URL=postgres://riskninja_user:riskninja_password@postgres:5432/riskninja_db
+      - JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+      - GLOBAL_ADMIN_EMAIL=david@avery.cloud
+    depends_on:
+      - postgres
 
   frontend:
     build:
       context: ./securechoice-frontend
       dockerfile: Dockerfile
+      args:
+        - REACT_APP_API_BASE_URL=https://api.avery.cloud
     ports:
       - "3000:80"
-    environment: []
 
-  nginx:
-    # ... existing configuration ...
-
-  db:
+  postgres:
     image: postgres:15-alpine
-    restart: always
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=yourpassword
-      - POSTGRES_DB=riskninja
+      - POSTGRES_DB=riskninja_db
+      - POSTGRES_USER=riskninja_user
+      - POSTGRES_PASSWORD=riskninja_password
+    ports:
+      - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
 
 volumes:
-  db_data:
+  postgres_data:
+  minio_data:
 

@@ -15,6 +15,7 @@ import documentsRoutes from './routes/documents';
 import researchRoutes from './routes/research';
 import adminRoutes from './routes/admin';
 import sysadminRoutes from './routes/sysadmin';
+import systemAdminRoutes from './routes/systemAdmin';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -35,15 +36,25 @@ const allowedOrigins = [
   // Allow same-host origin for direct backend UI calls
   'http://10.185.1.128:5000',
   'http://riskninja.avery.cloud',
-  'https://riskninja.avery.cloud'
+  'https://riskninja.avery.cloud',
+  // Add API subdomain for preflight requests
+  'https://api.avery.cloud',
+  'http://api.avery.cloud'
 ];
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    console.log(`[CORS] Checking origin: ${origin || 'undefined'}, Allowed origins: ${allowedOrigins.join(', ')}`);
+    // Temporarily allow all origins for debugging
+    if (true) { // Allow all for now
+      console.log(`[CORS] ✅ Origin ${origin || 'undefined'} allowed (debug mode)`);
+      callback(null, true);
+    } else if (!origin || (origin && allowedOrigins.indexOf(origin) !== -1)) {
+      console.log(`[CORS] ✅ Origin ${origin || 'undefined'} allowed`);
       callback(null, true);
     } else {
       console.error(`❌ CORS Error: Origin ${origin} not allowed by custom check.`);
+      console.error(`❌ Available origins: ${allowedOrigins.join(', ')}`);
       callback(new Error('Not allowed by CORS due to custom origin check'));
     }
   },
@@ -67,14 +78,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false, 
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" }, 
   crossOriginResourcePolicy: { policy: "cross-origin" }, 
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      connectSrc: ["'self'", ...allowedOrigins, 'ws://localhost:3000', 'ws://10.185.1.128:3000', 'http://localhost:5000', 'http://10.185.1.128:5000'], // Added backend IP for connectSrc
-      scriptSrc: ["'self'", "'unsafe-inline'"], 
-      styleSrc: ["'self'", "'unsafe-inline'"], 
-    },
-  },
+  contentSecurityPolicy: false, // Temporarily disable CSP to troubleshoot
 }));
 
 const limiter = rateLimit({
@@ -83,7 +87,7 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
   skip: (req) => req.method === 'OPTIONS',
 });
-app.use(limiter);
+// app.use(limiter); // Temporarily disabled for troubleshooting
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -100,12 +104,13 @@ app.get('/health', (req, res) => {
   });
 });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/documents', documentsRoutes);
-app.use('/api/research', researchRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/sysadmin', sysadminRoutes);
+app.use('/auth', authRoutes);
+app.use('/chat', chatRoutes);
+app.use('/documents', documentsRoutes);
+app.use('/research', researchRoutes);
+app.use('/admin', adminRoutes);
+app.use('/sysadmin', sysadminRoutes);
+app.use('/system-admin', systemAdminRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);

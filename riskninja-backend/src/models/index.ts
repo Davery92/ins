@@ -1,23 +1,18 @@
 import { Sequelize, DataTypes, Model } from 'sequelize';
-import path from 'path';
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, '../../data/riskninja.db');
+// Use DATABASE_URL for PostgreSQL connection
+const databaseUrl = process.env.DATABASE_URL || 'postgres://riskninja_user:riskninja_password@localhost:5432/riskninja_db';
 
-// Initialize Sequelize based on environment
-const dialect = process.env.DB_DIALECT || 'sqlite';
-export const sequelize =
-  dialect === 'sqlite'
-    ? new Sequelize({
-        dialect: 'sqlite',
-        storage: dbPath,
-        logging: process.env.NODE_ENV === 'development' ? console.log : false,
-      })
-    : new Sequelize(
-        `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`,
-        {
-          logging: process.env.NODE_ENV === 'development' ? console.log : false,
-        }
-      );
+export const sequelize = new Sequelize(databaseUrl, {
+  dialect: 'postgres',
+  logging: process.env.NODE_ENV === 'development' ? console.log : false,
+  pool: {
+    max: 10,
+    min: 0,
+    acquire: 30000,
+    idle: 10000
+  }
+});
 
 // Company Model
 export class CompanyModel extends Model {
@@ -27,6 +22,9 @@ export class CompanyModel extends Model {
   public licenseCount!: number; // Number of purchased licenses
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+
+  // Association properties
+  public readonly users?: UserModel[];
 }
 
 CompanyModel.init({
@@ -64,10 +62,13 @@ export class UserModel extends Model {
   public lastName!: string;
   public password!: string;
   public status!: 'pending' | 'active' | 'disabled';
-  public role!: 'user' | 'admin';
+  public role!: 'user' | 'admin' | 'system_admin';
   public companyId!: string;
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
+
+  // Association properties
+  public readonly company?: CompanyModel;
 }
 
 UserModel.init({
@@ -102,13 +103,13 @@ UserModel.init({
     defaultValue: 'pending',
   },
   role: {
-    type: DataTypes.ENUM('user', 'admin'),
+    type: DataTypes.ENUM('user', 'admin', 'system_admin'),
     allowNull: false,
     defaultValue: 'user',
   },
   companyId: {
     type: DataTypes.UUID,
-    allowNull: true,
+    allowNull: true, // system_admin users may not belong to a company
     references: {
       model: CompanyModel,
       key: 'id',
@@ -268,16 +269,37 @@ PolicyDocumentModel.init({
   ]
 });
 
-// Define associations
-UserModel.hasMany(ChatMessageModel, { foreignKey: 'userId', as: 'chatMessages' });
-ChatMessageModel.belongsTo(UserModel, { foreignKey: 'userId', as: 'user' });
+// Establish associations
+CompanyModel.hasMany(UserModel, {
+  foreignKey: 'companyId',
+  as: 'users'
+});
 
-UserModel.hasMany(PolicyDocumentModel, { foreignKey: 'userId', as: 'policyDocuments' });
-PolicyDocumentModel.belongsTo(UserModel, { foreignKey: 'userId', as: 'user' });
+UserModel.belongsTo(CompanyModel, {
+  foreignKey: 'companyId',
+  as: 'company'
+});
 
-// New multi-tenant associations
-CompanyModel.hasMany(UserModel, { foreignKey: 'companyId', as: 'users' });
-UserModel.belongsTo(CompanyModel, { foreignKey: 'companyId', as: 'company' });
+// Document associations remain the same
+UserModel.hasMany(PolicyDocumentModel, {
+  foreignKey: 'userId',
+  as: 'documents'
+});
+
+PolicyDocumentModel.belongsTo(UserModel, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+UserModel.hasMany(ChatMessageModel, {
+  foreignKey: 'userId',
+  as: 'messages'
+});
+
+ChatMessageModel.belongsTo(UserModel, {
+  foreignKey: 'userId',
+  as: 'user'
+});
 
 // Initialize database
 export const initDatabase = async (): Promise<void> => {
@@ -285,13 +307,8 @@ export const initDatabase = async (): Promise<void> => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully.');
 
-    if (sequelize.getDialect() === 'sqlite') {
-      // SQLite: create tables if not exist, skip alter to avoid backup failures
-      await sequelize.sync();
-    } else {
-      // Other databases: alter tables to match models
-      await sequelize.sync({ alter: true });
-    }
+    // For PostgreSQL: Use alter: true to update existing tables safely
+    await sequelize.sync({ alter: true });
     console.log('✅ Database tables created successfully.');
   } catch (error) {
     console.error('❌ Unable to connect to database:', error);

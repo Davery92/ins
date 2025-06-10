@@ -30,7 +30,7 @@ const Admin: React.FC = () => {
     }
     const fetchUsers = async () => {
       try {
-        const res = await fetch('/api/admin/users', {
+        const res = await fetch(`${process.env.REACT_APP_API_BASE_URL || '/api'}/admin/users`, {
           headers: { 'Authorization': `Bearer ${token}` },
         });
         const data = await res.json();
@@ -53,7 +53,7 @@ const Admin: React.FC = () => {
 
   const activateUser = async (userId: string) => {
     try {
-      const res = await fetch(`/api/admin/users/${userId}/assign-license`, {
+      const res = await fetch(`${process.env.REACT_APP_API_BASE_URL || '/api'}/admin/users/${userId}/assign-license`, {
         method: 'PATCH',
         headers: { 'Authorization': `Bearer ${token}` },
       });

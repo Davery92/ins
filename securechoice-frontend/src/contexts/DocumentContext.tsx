@@ -51,7 +51,7 @@ interface DocumentProviderProps {
   children: ReactNode;
 }
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
 export function DocumentProvider({ children }: DocumentProviderProps): JSX.Element {
   const [sessionId, setSessionId] = useState<string>(() => `session_${Date.now()}_${Math.random().toString(36).substr(2,9)}`);

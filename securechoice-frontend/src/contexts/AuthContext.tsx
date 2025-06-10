@@ -6,8 +6,8 @@ interface User {
   firstName: string;
   lastName: string;
   status: 'pending' | 'active' | 'disabled';
-  role: 'user' | 'admin';
-  companyId: string;
+  role: 'user' | 'admin' | 'system_admin';
+  companyId: string | null;
 }
 
 interface AuthContextType {
@@ -35,7 +35,7 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-const API_BASE_URL = '/api';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -145,7 +145,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await fetch(`${API_BASE_URL}/auth/register-admin`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ companyName, domain, email, password, firstName, lastName }),
+        body: JSON.stringify({ companyName, companyDomain: domain, email, password, firstName, lastName }),
       });
       const data = await response.json();
       if (!response.ok) {

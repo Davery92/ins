@@ -1,7 +1,7 @@
 import { Router } from 'express';
-import { assignLicenseToUser, getCompanyUsers } from '../controllers/adminController';
 import { authenticateToken } from '../middleware/auth';
 import { isAdmin } from '../middleware/isAdmin';
+import { getCompanyUsers, activateUser, deactivateUser } from '../controllers/adminController';
 
 const router = Router();
 
@@ -11,16 +11,23 @@ router.use(isAdmin);
 
 /**
  * @route   GET /api/admin/users
- * @desc    Get all users for the admin's company
+ * @desc    Get all users within the admin's company
  * @access  Private (Admin)
  */
 router.get('/users', getCompanyUsers);
 
 /**
- * @route   PATCH /api/admin/users/:userId/assign-license
- * @desc    Assign a license to a user by activating their account
+ * @route   PATCH /api/admin/users/:userId/activate
+ * @desc    Activate a user (assign a license)
  * @access  Private (Admin)
  */
-router.patch('/users/:userId/assign-license', assignLicenseToUser);
+router.patch('/users/:userId/activate', activateUser);
+
+/**
+ * @route   PATCH /api/admin/users/:userId/deactivate
+ * @desc    Deactivate a user (revoke license)
+ * @access  Private (Admin)
+ */
+router.patch('/users/:userId/deactivate', deactivateUser);
 
 export default router; 

@@ -58,7 +58,7 @@ const Policies: React.FC = () => {
         try {
           const formData = new FormData();
           formData.append('file', file.file);
-          const res = await fetch(`${API_BASE_URL}/documents/extract`, {
+          const res = await fetch(`${process.env.REACT_APP_API_BASE_URL || '/api'}/documents/extract`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${token}` },
             body: formData,

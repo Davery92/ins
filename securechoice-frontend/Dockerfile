@@ -2,10 +2,13 @@
 # Stage 1: Build React app
 FROM node:18-alpine AS builder
 WORKDIR /app
+
+# Set build-time environment variables
+ARG REACT_APP_API_BASE_URL
+ENV REACT_APP_API_BASE_URL=$REACT_APP_API_BASE_URL
+
 COPY package.json package-lock.json ./
 RUN npm install
-# Copy env if present for API URL
-COPY .env .env
 COPY . .
 RUN npm run build
 

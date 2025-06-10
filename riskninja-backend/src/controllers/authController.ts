@@ -1,47 +1,44 @@
 import { Request, Response } from 'express';
-const bcrypt = require('bcryptjs');
+import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { UserModel, CompanyModel, sequelize } from '../models';
 import { LoginRequest, RegisterRequest } from '../types';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { email, password, firstName, lastName }: RegisterRequest = req.body;
+  const { email, password, firstName, lastName } = req.body;
 
-    // Validate input
+  try {
+    // Validate required fields
     if (!email || !password || !firstName || !lastName) {
       res.status(400).json({ error: 'All fields are required' });
-      return;
-    }
-
-    if (password.length < 6) {
-      res.status(400).json({ error: 'Password must be at least 6 characters' });
-      return;
-    }
-
-    // Domain Matching Logic
-    const userDomain = email.split('@')[1];
-    if (!userDomain) {
-      res.status(400).json({ error: 'Invalid email address format.' });
-      return;
-    }
-
-    const company = await CompanyModel.findOne({ where: { domain: userDomain } });
-    if (!company) {
-      res.status(400).json({ error: 'Your company is not registered. Please contact your administrator.' });
       return;
     }
 
     // Check if user already exists
     const existingUser = await UserModel.findOne({ where: { email } });
     if (existingUser) {
-      res.status(409).json({ error: 'User with this email already exists' });
+      res.status(400).json({ error: 'User already exists' });
+      return;
+    }
+
+    // Extract domain from email
+    const emailDomain = email.split('@')[1];
+    if (!emailDomain) {
+      res.status(400).json({ error: 'Invalid email format' });
+      return;
+    }
+
+    // Find company by domain
+    const company = await CompanyModel.findOne({ where: { domain: emailDomain } });
+    if (!company) {
+      res.status(400).json({ 
+        error: 'No company found for your email domain. Please contact your administrator.' 
+      });
       return;
     }
 
     // Hash password
-    const saltRounds = 12;
-    const hashedPassword = await bcrypt.hash(password, saltRounds);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Create user
     const user = await UserModel.create({
@@ -49,26 +46,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
       password: hashedPassword,
       firstName,
       lastName,
-      companyId: company.id,
+      status: 'pending', // New users start as pending
       role: 'user',
-      status: 'pending',
+      companyId: company.id
     });
 
-    // Generate JWT token
-    const jwtSecret = process.env.JWT_SECRET;
-    if (!jwtSecret) {
-      throw new Error('JWT_SECRET not configured');
-    }
-
-    const token = jwt.sign(
-      { userId: user.id, email: user.email },
-      jwtSecret,
-      { expiresIn: '7d' }
-    );
-
     res.status(201).json({
-      message: 'User registered successfully. Account is pending activation.',
-      token,
+      message: 'User registered successfully. Please wait for admin approval.',
       user: {
         id: user.id,
         email: user.email,
@@ -76,11 +60,12 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         lastName: user.lastName,
         status: user.status,
         role: user.role,
-      },
+        companyId: user.companyId
+      }
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Registration failed' });
   }
 };
 
