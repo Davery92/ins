@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ChatInterface, { ChatMessage } from '../components/ChatInterface';
 import ApiStatus from '../components/ApiStatus';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
@@ -27,6 +28,7 @@ interface Customer {
 }
 
 const Home: React.FC = () => {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -1534,7 +1536,7 @@ const Home: React.FC = () => {
 
             <div
               className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20 border border-amber-200 dark:border-amber-700 rounded-lg p-6 cursor-pointer hover:shadow-md transition-all"
-              onClick={handleComparePolicies}
+              onClick={() => navigate('/comparison')}
             >
               <div className="w-10 h-10 bg-amber-500 rounded-lg flex items-center justify-center mb-4">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="white">

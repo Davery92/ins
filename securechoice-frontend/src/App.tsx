@@ -13,6 +13,7 @@ import Admin from './pages/Admin';
 import Login from './pages/Login';
 import RegisterAdmin from './pages/RegisterAdmin';
 import SystemAdmin from './pages/SystemAdmin';
+import Comparison from './pages/Comparison';
 
 function App() {
   return (
@@ -35,6 +36,7 @@ function App() {
                         <Routes>
                           <Route path="/" element={<Home />} />
                           <Route path="/policies" element={<Policies />} />
+                          <Route path="/comparison" element={<Comparison />} />
                           <Route path="/chat-history" element={<ChatHistory />} />
                           <Route path="/support" element={<Support />} />
                           <Route path="/admin" element={<Admin />} />

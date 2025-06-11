@@ -21,6 +21,7 @@ const sysadmin_1 = __importDefault(require("./routes/sysadmin"));
 const systemAdmin_1 = __importDefault(require("./routes/systemAdmin"));
 const customers_1 = __importDefault(require("./routes/customers"));
 const chatSessions_1 = __importDefault(require("./routes/chatSessions"));
+const comparison_1 = __importDefault(require("./routes/comparison"));
 const fileStorage_1 = require("./services/fileStorage");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
@@ -96,6 +97,7 @@ app.use('/sysadmin', sysadmin_1.default);
 app.use('/system-admin', systemAdmin_1.default);
 app.use('/customers', customers_1.default);
 app.use('/chat-sessions', chatSessions_1.default);
+app.use('/comparison', comparison_1.default);
 app.use((err, req, res, next) => {
     console.error('Global error:', err.message, err.stack);
     if (err.message && err.message.includes('Not allowed by CORS')) {
