@@ -21,7 +21,7 @@ const authenticateToken = async (req, res, next) => {
         const decoded = jsonwebtoken_1.default.verify(token, jwtSecret);
         // Verify user still exists
         const user = await models_1.UserModel.findByPk(decoded.userId, {
-            attributes: ['id', 'email', 'firstName', 'lastName']
+            attributes: ['id', 'email', 'firstName', 'lastName', 'status', 'role', 'companyId']
         });
         if (!user) {
             res.status(401).json({ error: 'User not found' });
@@ -32,6 +32,9 @@ const authenticateToken = async (req, res, next) => {
             email: user.email,
             firstName: user.firstName,
             lastName: user.lastName,
+            status: user.status,
+            role: user.role,
+            companyId: user.companyId,
         };
         next();
     }

@@ -7,11 +7,13 @@ const express_1 = require("express");
 const multer_1 = __importDefault(require("multer"));
 const pdf_parse_1 = __importDefault(require("pdf-parse"));
 const auth_1 = require("../middleware/auth");
+const checkLicense_1 = require("../middleware/checkLicense");
 const models_1 = require("../models");
+const fileStorage_1 = require("../services/fileStorage");
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
 // POST /api/documents/extract - extract full text from uploaded PDF
-router.post('/extract', auth_1.authenticateToken, upload.single('file'), async (req, res, next) => {
+router.post('/extract', auth_1.authenticateToken, checkLicense_1.checkLicense, upload.single('file'), async (req, res, next) => {
     try {
         if (!req.file) {
             res.status(400).json({ error: 'No file uploaded' });
@@ -28,14 +30,17 @@ router.post('/extract', auth_1.authenticateToken, upload.single('file'), async (
         return;
     }
 });
-// New: GET /api/documents - list user's documents
-router.get('/', auth_1.authenticateToken, async (req, res) => {
+// GET /api/documents - list user's documents
+router.get('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
     const userId = req.user.id;
-    const docs = await models_1.PolicyDocumentModel.findAll({ where: { userId } });
+    const docs = await models_1.PolicyDocumentModel.findAll({
+        where: { userId },
+        order: [['uploadedAt', 'DESC']]
+    });
     res.json(docs);
 });
-// New: POST /api/documents - upload and store document
-router.post('/', auth_1.authenticateToken, upload.single('file'), async (req, res) => {
+// POST /api/documents - upload and store document with S3 integration
+router.post('/', auth_1.authenticateToken, checkLicense_1.checkLicense, upload.single('file'), async (req, res) => {
     try {
         const userId = req.user.id;
         if (!req.file) {
@@ -44,24 +49,40 @@ router.post('/', auth_1.authenticateToken, upload.single('file'), async (req, re
         }
         const { originalname, buffer, mimetype, size } = req.file;
         const assignedName = req.body.name || originalname;
-        // prevent duplicate names
+        const customerId = req.body.customerId;
+        const policyType = req.body.policyType;
+        // Prevent duplicate names per user
         const existing = await models_1.PolicyDocumentModel.findOne({ where: { userId, name: assignedName } });
         if (existing) {
             res.status(409).json({ error: 'Document with this name already exists' });
             return;
         }
-        // create record
+        // Upload file to S3/MinIO
+        const { key, url } = await fileStorage_1.FileStorageService.uploadFile(buffer, originalname, mimetype, userId, customerId);
+        // Create database record
         const doc = await models_1.PolicyDocumentModel.create({
             userId,
+            customerId: customerId || null,
             name: assignedName,
             originalName: originalname,
             size,
             type: mimetype,
+            policyType: policyType || null,
+            fileKey: key,
+            fileUrl: url,
             status: 'processing'
         });
-        // extract text
-        const data = await (0, pdf_parse_1.default)(buffer);
-        await doc.update({ extractedText: data.text, status: 'completed' });
+        // Extract text from PDF
+        let extractedText = null;
+        try {
+            const data = await (0, pdf_parse_1.default)(buffer);
+            extractedText = data.text;
+            await doc.update({ extractedText, status: 'completed' });
+        }
+        catch (error) {
+            console.error('Text extraction failed:', error);
+            await doc.update({ status: 'error' });
+        }
         res.status(201).json(doc);
         return;
     }
@@ -71,8 +92,31 @@ router.post('/', auth_1.authenticateToken, upload.single('file'), async (req, re
         return;
     }
 });
-// New: DELETE /api/documents/:id - delete user's document
-router.delete('/:id', auth_1.authenticateToken, async (req, res) => {
+// GET /api/documents/:id/download - get download URL for a document
+router.get('/:id/download', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id } = req.params;
+        const doc = await models_1.PolicyDocumentModel.findOne({ where: { id, userId } });
+        if (!doc || !doc.fileKey) {
+            res.status(404).json({ error: 'Document not found' });
+            return;
+        }
+        // Generate fresh download URL
+        const downloadUrl = await fileStorage_1.FileStorageService.getFileUrl(doc.fileKey);
+        // Update the stored URL
+        await doc.update({ fileUrl: downloadUrl });
+        res.json({ downloadUrl });
+        return;
+    }
+    catch (error) {
+        console.error('Document download error:', error);
+        res.status(500).json({ error: 'Failed to generate download URL' });
+        return;
+    }
+});
+// DELETE /api/documents/:id - delete user's document from both DB and storage
+router.delete('/:id', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
     try {
         const userId = req.user.id;
         const { id } = req.params;
@@ -80,6 +124,16 @@ router.delete('/:id', auth_1.authenticateToken, async (req, res) => {
         if (!doc) {
             res.status(404).json({ error: 'Document not found' });
             return;
+        }
+        // Delete from S3/MinIO if file key exists
+        if (doc.fileKey) {
+            try {
+                await fileStorage_1.FileStorageService.deleteFile(doc.fileKey);
+            }
+            catch (error) {
+                console.error('Failed to delete file from storage:', error);
+                // Continue with database deletion even if storage deletion fails
+            }
         }
         await doc.destroy();
         res.status(204).send();

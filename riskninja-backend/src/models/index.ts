@@ -126,6 +126,7 @@ UserModel.init({
 export class ChatMessageModel extends Model {
   public id!: string;
   public userId!: string;
+  public sessionId!: string; // Link to chat session
   public content!: string;
   public sender!: 'user' | 'ai';
   public timestamp!: Date;
@@ -143,6 +144,14 @@ ChatMessageModel.init({
     allowNull: false,
     references: {
       model: UserModel,
+      key: 'id',
+    },
+  },
+  sessionId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: 'chat_sessions',
       key: 'id',
     },
   },
@@ -174,6 +183,7 @@ ChatMessageModel.init({
 export class PolicyDocumentModel extends Model {
   public id!: string;
   public userId!: string;
+  public customerId!: string | null; // Link to customer
   public name!: string;
   public originalName!: string;
   public size!: number;
@@ -187,6 +197,8 @@ export class PolicyDocumentModel extends Model {
   public recommendations!: string[] | null;
   public riskScore!: number | null;
   public policyType!: string | null;
+  public fileKey!: string | null; // S3/MinIO storage key
+  public fileUrl!: string | null; // Presigned URL for access
 }
 
 PolicyDocumentModel.init({
@@ -203,6 +215,14 @@ PolicyDocumentModel.init({
       key: 'id',
     },
     unique: 'user_document_name',
+  },
+  customerId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: 'customers',
+      key: 'id',
+    },
   },
   name: {
     type: DataTypes.STRING,
@@ -259,6 +279,14 @@ PolicyDocumentModel.init({
     type: DataTypes.STRING,
     allowNull: true,
   },
+  fileKey: {
+    type: DataTypes.STRING(500),
+    allowNull: true,
+  },
+  fileUrl: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
 }, {
   sequelize,
   modelName: 'PolicyDocument',
@@ -267,6 +295,117 @@ PolicyDocumentModel.init({
   indexes: [
     { unique: true, fields: ['userId', 'name'], name: 'user_document_name' }
   ]
+});
+
+// Customer Model
+export class CustomerModel extends Model {
+  public id!: string;
+  public userId!: string; // Who owns this customer
+  public name!: string;
+  public type!: 'customer' | 'prospect';
+  public email!: string | null;
+  public phone!: string | null;
+  public company!: string | null;
+  public status!: 'active' | 'inactive' | 'lead';
+  public createdAt!: Date;
+  public lastContact!: Date | null;
+  public readonly updatedAt!: Date;
+}
+
+CustomerModel.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: UserModel,
+      key: 'id',
+    },
+  },
+  name: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  type: {
+    type: DataTypes.ENUM('customer', 'prospect'),
+    allowNull: false,
+  },
+  email: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    validate: {
+      isEmail: true,
+    },
+  },
+  phone: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  company: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  status: {
+    type: DataTypes.ENUM('active', 'inactive', 'lead'),
+    allowNull: false,
+    defaultValue: 'active',
+  },
+  lastContact: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+}, {
+  sequelize,
+  modelName: 'Customer',
+  tableName: 'customers',
+  timestamps: true,
+});
+
+// Chat Session Model (to group related messages)
+export class ChatSessionModel extends Model {
+  public id!: string;
+  public userId!: string;
+  public customerId!: string | null; // Link to customer
+  public title!: string;
+  public createdAt!: Date;
+  public updatedAt!: Date;
+}
+
+ChatSessionModel.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: UserModel,
+      key: 'id',
+    },
+  },
+  customerId: {
+    type: DataTypes.UUID,
+    allowNull: true,
+    references: {
+      model: CustomerModel,
+      key: 'id',
+    },
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: 'ChatSession',
+  tableName: 'chat_sessions',
+  timestamps: true,
 });
 
 // Establish associations
@@ -280,7 +419,18 @@ UserModel.belongsTo(CompanyModel, {
   as: 'company'
 });
 
-// Document associations remain the same
+// Customer associations
+UserModel.hasMany(CustomerModel, {
+  foreignKey: 'userId',
+  as: 'customers'
+});
+
+CustomerModel.belongsTo(UserModel, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+// Document associations
 UserModel.hasMany(PolicyDocumentModel, {
   foreignKey: 'userId',
   as: 'documents'
@@ -289,6 +439,48 @@ UserModel.hasMany(PolicyDocumentModel, {
 PolicyDocumentModel.belongsTo(UserModel, {
   foreignKey: 'userId',
   as: 'user'
+});
+
+CustomerModel.hasMany(PolicyDocumentModel, {
+  foreignKey: 'customerId',
+  as: 'documents'
+});
+
+PolicyDocumentModel.belongsTo(CustomerModel, {
+  foreignKey: 'customerId',
+  as: 'customer'
+});
+
+// Chat session associations  
+UserModel.hasMany(ChatSessionModel, {
+  foreignKey: 'userId',
+  as: 'chatSessions'
+});
+
+ChatSessionModel.belongsTo(UserModel, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+CustomerModel.hasMany(ChatSessionModel, {
+  foreignKey: 'customerId',
+  as: 'chatSessions'
+});
+
+ChatSessionModel.belongsTo(CustomerModel, {
+  foreignKey: 'customerId',
+  as: 'customer'
+});
+
+// Chat message associations
+ChatSessionModel.hasMany(ChatMessageModel, {
+  foreignKey: 'sessionId',
+  as: 'messages'
+});
+
+ChatMessageModel.belongsTo(ChatSessionModel, {
+  foreignKey: 'sessionId',
+  as: 'session'
 });
 
 UserModel.hasMany(ChatMessageModel, {

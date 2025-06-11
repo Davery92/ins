@@ -16,6 +16,12 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const chat_1 = __importDefault(require("./routes/chat"));
 const documents_1 = __importDefault(require("./routes/documents"));
 const research_1 = __importDefault(require("./routes/research"));
+const admin_1 = __importDefault(require("./routes/admin"));
+const sysadmin_1 = __importDefault(require("./routes/sysadmin"));
+const systemAdmin_1 = __importDefault(require("./routes/systemAdmin"));
+const customers_1 = __importDefault(require("./routes/customers"));
+const chatSessions_1 = __importDefault(require("./routes/chatSessions"));
+const fileStorage_1 = require("./services/fileStorage");
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
 // Trust the first proxy to properly handle X-Forwarded-* headers (needed for rate-limit)
@@ -25,16 +31,24 @@ app.use((req, res, next) => {
     console.log(`[RAW ENTRY] ${req.method} ${req.url} Origin: ${req.headers.origin} Headers: ${JSON.stringify(req.headers)}`);
     next();
 });
-const allowedOrigins = ['http://localhost:3000', 'http://10.185.1.128:3000'];
+// CORS origins allowed to make requests
+const allowedOrigins = [
+    'http://localhost:3000',
+    'http://10.185.1.128:3000',
+    // Allow same-host origin for direct backend UI calls
+    'http://10.185.1.128:5000',
+    'http://riskninja.avery.cloud',
+    'https://riskninja.avery.cloud',
+    // Add API subdomain for preflight requests
+    'https://api.avery.cloud',
+    'http://api.avery.cloud'
+];
 const corsOptions = {
     origin: (origin, callback) => {
-        if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-            callback(null, true);
-        }
-        else {
-            console.error(`❌ CORS Error: Origin ${origin} not allowed by custom check.`);
-            callback(new Error('Not allowed by CORS due to custom origin check'));
-        }
+        console.log(`[CORS] Checking origin: ${origin || 'undefined'}, Allowed origins: ${allowedOrigins.join(', ')}`);
+        // Temporarily allow all origins for debugging
+        console.log(`[CORS] ✅ Origin ${origin || 'undefined'} allowed (debug mode)`);
+        callback(null, true);
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH'],
@@ -52,14 +66,7 @@ app.use((0, helmet_1.default)({
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
     crossOriginResourcePolicy: { policy: "cross-origin" },
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            connectSrc: ["'self'", ...allowedOrigins, 'ws://localhost:3000', 'ws://10.185.1.128:3000', 'http://localhost:5000', 'http://10.185.1.128:5000'], // Added backend IP for connectSrc
-            scriptSrc: ["'self'", "'unsafe-inline'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-        },
-    },
+    contentSecurityPolicy: false, // Temporarily disable CSP to troubleshoot
 }));
 const limiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000,
@@ -67,7 +74,7 @@ const limiter = (0, express_rate_limit_1.default)({
     message: 'Too many requests from this IP, please try again later.',
     skip: (req) => req.method === 'OPTIONS',
 });
-app.use(limiter);
+// app.use(limiter); // Temporarily disabled for troubleshooting
 app.use(express_1.default.json({ limit: '10mb' }));
 app.use(express_1.default.urlencoded({ extended: true }));
 if (process.env.NODE_ENV === 'development') {
@@ -80,10 +87,15 @@ app.get('/health', (req, res) => {
         environment: process.env.NODE_ENV || 'development',
     });
 });
-app.use('/api/auth', auth_1.default);
-app.use('/api/chat', chat_1.default);
-app.use('/api/documents', documents_1.default);
-app.use('/api/research', research_1.default);
+app.use('/auth', auth_1.default);
+app.use('/chat', chat_1.default);
+app.use('/documents', documents_1.default);
+app.use('/research', research_1.default);
+app.use('/admin', admin_1.default);
+app.use('/sysadmin', sysadmin_1.default);
+app.use('/system-admin', systemAdmin_1.default);
+app.use('/customers', customers_1.default);
+app.use('/chat-sessions', chatSessions_1.default);
 app.use((err, req, res, next) => {
     console.error('Global error:', err.message, err.stack);
     if (err.message && err.message.includes('Not allowed by CORS')) {
@@ -101,6 +113,7 @@ app.use('*', (req, res) => {
 const startServer = async () => {
     try {
         await (0, models_1.initDatabase)();
+        await (0, fileStorage_1.initializeStorage)();
         app.listen(PORT, () => {
             console.log(`🚀 RiskNinja Backend running on port ${PORT}`);
             console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);

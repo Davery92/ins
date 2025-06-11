@@ -16,6 +16,9 @@ import researchRoutes from './routes/research';
 import adminRoutes from './routes/admin';
 import sysadminRoutes from './routes/sysadmin';
 import systemAdminRoutes from './routes/systemAdmin';
+import customersRoutes from './routes/customers';
+import chatSessionsRoutes from './routes/chatSessions';
+import { initializeStorage } from './services/fileStorage';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -46,17 +49,8 @@ const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
     console.log(`[CORS] Checking origin: ${origin || 'undefined'}, Allowed origins: ${allowedOrigins.join(', ')}`);
     // Temporarily allow all origins for debugging
-    if (true) { // Allow all for now
-      console.log(`[CORS] ✅ Origin ${origin || 'undefined'} allowed (debug mode)`);
-      callback(null, true);
-    } else if (!origin || (origin && allowedOrigins.indexOf(origin) !== -1)) {
-      console.log(`[CORS] ✅ Origin ${origin || 'undefined'} allowed`);
-      callback(null, true);
-    } else {
-      console.error(`❌ CORS Error: Origin ${origin} not allowed by custom check.`);
-      console.error(`❌ Available origins: ${allowedOrigins.join(', ')}`);
-      callback(new Error('Not allowed by CORS due to custom origin check'));
-    }
+    console.log(`[CORS] ✅ Origin ${origin || 'undefined'} allowed (debug mode)`);
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH'],
@@ -111,6 +105,8 @@ app.use('/research', researchRoutes);
 app.use('/admin', adminRoutes);
 app.use('/sysadmin', sysadminRoutes);
 app.use('/system-admin', systemAdminRoutes);
+app.use('/customers', customersRoutes);
+app.use('/chat-sessions', chatSessionsRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);
@@ -130,6 +126,7 @@ app.use('*', (req, res) => {
 const startServer = async () => {
   try {
     await initDatabase();
+    await initializeStorage();
     
     app.listen(PORT, () => {
       console.log(`🚀 RiskNinja Backend running on port ${PORT}`);

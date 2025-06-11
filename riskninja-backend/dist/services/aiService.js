@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.aiService = void 0;
 const node_fetch_1 = __importDefault(require("node-fetch"));
+const tiktoken_1 = require("@dqbd/tiktoken");
 const config_1 = require("../utils/config");
 // Log configuration in development
 (0, config_1.logConfig)();
@@ -21,16 +22,22 @@ exports.aiService = {
         if (!apiKey) {
             throw new Error('GEMINI_API_KEY not configured');
         }
+        // Precisely trim prompt tokens using tiktoken
+        const MAX_INPUT_TOKENS = 1048575;
+        // Initialize encoder for the underlying cl100k_base encoding
+        const encoder = (0, tiktoken_1.get_encoding)('cl100k_base');
+        // Encode text into token IDs
+        let tokenIds = encoder.encode(prompt);
+        if (tokenIds.length > MAX_INPUT_TOKENS) {
+            console.warn(`Prompt token count (${tokenIds.length}) exceeds maximum allowed (${MAX_INPUT_TOKENS}), truncating.`);
+            tokenIds = tokenIds.slice(0, MAX_INPUT_TOKENS);
+        }
+        // Decode token IDs back to UTF-8 bytes and convert to string
+        const decodedBytes = encoder.decode(tokenIds);
+        const promptToSend = new TextDecoder().decode(decodedBytes);
+        encoder.free();
         const requestBody = {
-            contents: [
-                {
-                    parts: [
-                        {
-                            text: prompt,
-                        },
-                    ],
-                },
-            ],
+            contents: [{ parts: [{ text: promptToSend }] }],
             generationConfig: {
                 temperature: 0.7,
                 maxOutputTokens: 2000,

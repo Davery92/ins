@@ -25,6 +25,7 @@ export class AIService {
   private readonly apiKey: string;
   private readonly modelId: string;
   private readonly baseUrl: string;
+  private readonly MAX_TOKENS = 1000000; // Gemini 1.5 Pro context limit
 
   constructor() {
     this.apiKey = config.gemini.apiKey;
@@ -50,7 +51,144 @@ export class AIService {
     return AIService.instance;
   }
 
-  // Build context-aware prompt for insurance domain
+  // Enhanced context builder that includes full conversation history and documents
+  private buildComprehensiveContext(
+    messages: Array<{content: string, sender: 'user' | 'ai', timestamp: Date}>,
+    documents: Array<{name: string, extractedText?: string}> = [],
+    policyType?: string
+  ): string {
+    // System prompt for RiskNinja AI
+    const systemPrompt = `You are RiskNinja AI, a specialized commercial insurance assistant. You help businesses with:
+- Commercial policy analysis and risk assessment
+- Coverage gap identification and recommendations  
+- Premium optimization and cost management
+- Claims guidance and risk mitigation strategies
+- Regulatory compliance and industry best practices
+
+IMPORTANT: You have access to the full conversation history and all document content. Use this complete context to provide informed, relevant responses that reference previous discussions and document details.
+
+Context about the business:
+- Policy Type Focus: ${policyType || 'General Commercial'}
+- Documents Available: ${documents.length} commercial policy documents
+${documents.length > 0 ? `- Document Names: ${documents.map(d => d.name).join(', ')}` : ''}
+
+Respond in a professional, business-focused tone. Use industry terminology appropriately and format responses with clear headers using **bold** text. 
+Provide specific, actionable recommendations with dollar amounts and coverage limits when possible.
+Focus on business risk management and regulatory compliance.`;
+
+    // Build conversation history
+    let conversationHistory = '';
+    if (messages.length > 0) {
+      conversationHistory = '\n\nCONVERSATION HISTORY:\n' + 
+        messages.map(msg => {
+          const timestamp = new Date(msg.timestamp).toLocaleTimeString();
+          return `[${timestamp}] ${msg.sender === 'user' ? 'USER' : 'RISKNINJA AI'}: ${msg.content}`;
+        }).join('\n');
+    }
+
+    // Add document content
+    let documentContext = '';
+    if (documents.length > 0) {
+      documentContext = '\n\nDOCUMENT CONTENT:\n';
+      documents.forEach(doc => {
+        documentContext += `\n--- Document: ${doc.name} ---\n`;
+        documentContext += doc.extractedText || 'Unable to extract text from this document.';
+        documentContext += '\n';
+      });
+    }
+
+    const fullContext = systemPrompt + conversationHistory + documentContext;
+    
+    // Token management - truncate if too long
+    return this.truncateToTokenLimit(fullContext);
+  }
+
+  // Simple token estimation (approximate)
+  private estimateTokens(text: string): number {
+    // Rough estimation: 1 token ≈ 4 characters for English text
+    return Math.ceil(text.length / 4);
+  }
+
+  // Truncate content to stay within token limits
+  private truncateToTokenLimit(text: string): string {
+    const estimatedTokens = this.estimateTokens(text);
+    
+    if (estimatedTokens <= this.MAX_TOKENS) {
+      return text;
+    }
+
+    console.warn(`⚠️ Context too long (${estimatedTokens} tokens), truncating to fit ${this.MAX_TOKENS} limit`);
+    
+    // Keep system prompt intact, truncate from the middle of conversation/documents
+    const lines = text.split('\n');
+    const systemPromptEnd = lines.findIndex(line => line.includes('CONVERSATION HISTORY:'));
+    
+    if (systemPromptEnd === -1) {
+      // Fallback: truncate from end
+      const targetLength = Math.floor(text.length * (this.MAX_TOKENS / estimatedTokens));
+      return text.substring(0, targetLength) + '\n\n[... content truncated due to length ...]';
+    }
+
+    const systemPrompt = lines.slice(0, systemPromptEnd).join('\n');
+    const remainingLines = lines.slice(systemPromptEnd);
+    
+    // Calculate how much space we have left
+    const systemTokens = this.estimateTokens(systemPrompt);
+    const availableTokens = this.MAX_TOKENS - systemTokens - 100; // Buffer
+    const availableChars = availableTokens * 4;
+    
+    const remainingText = remainingLines.join('\n');
+    if (remainingText.length <= availableChars) {
+      return text;
+    }
+    
+    // Truncate from the middle, keeping recent conversation and all documents
+    const truncatedRemaining = remainingText.substring(0, availableChars) + 
+      '\n\n[... earlier conversation truncated due to length ...]';
+    
+    return systemPrompt + '\n' + truncatedRemaining;
+  }
+
+  // Enhanced sendMessage with comprehensive context
+  public async sendMessageWithFullContext(
+    userMessage: string,
+    conversationHistory: Array<{content: string, sender: 'user' | 'ai', timestamp: Date}>,
+    onStreamUpdate: (content: string) => void,
+    documents?: Array<{name: string, extractedText?: string}>,
+    policyType?: string
+  ): Promise<string> {
+    try {
+      // Build comprehensive context including all conversation history and documents
+      const fullContext = this.buildComprehensiveContext(
+        [...conversationHistory, {content: userMessage, sender: 'user', timestamp: new Date()}],
+        documents || [],
+        policyType
+      );
+
+      const response = await this.callGeminiAPI(fullContext);
+      
+      // Simulate streaming by sending chunks
+      const words = response.split(' ');
+      let currentContent = '';
+      
+      for (let i = 0; i < words.length; i++) {
+        currentContent += (i > 0 ? ' ' : '') + words[i];
+        onStreamUpdate(currentContent);
+        
+        // Simulate network delay for streaming effect
+        await new Promise(resolve => setTimeout(resolve, 30 + Math.random() * 70));
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('AI service error:', error);
+      const fallbackResponse = 'I apologize, but I\'m experiencing technical difficulties. Please try again in a moment.';
+      onStreamUpdate(fallbackResponse);
+      return fallbackResponse;
+    }
+  }
+
+  // Build context-aware prompt for insurance domain (legacy method - keeping for compatibility)
   private buildInsurancePrompt(userMessage: string): string {
     const systemContext = `You are RiskNinja AI, a specialized commercial insurance assistant. You help businesses with:
 - Commercial policy analysis and risk assessment

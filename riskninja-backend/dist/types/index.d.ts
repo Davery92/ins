@@ -43,6 +43,9 @@ export interface AuthRequest extends Request {
         email: string;
         firstName: string;
         lastName: string;
+        status: 'pending' | 'active' | 'disabled';
+        role: 'user' | 'admin' | 'system_admin';
+        companyId: string;
     };
 }
 export interface LoginRequest {
