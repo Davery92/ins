@@ -1,4 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?display=swap&family=Noto+Sans:wght@400;500;700;900&family=Public+Sans:wght@400;500;700;900');
+@import 'highlight.js/styles/github.css';
+@import 'katex/dist/katex.min.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -13,4 +15,126 @@ body {
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
+}
+
+/* Markdown Styling */
+.markdown-content {
+  /* Headers */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-semibold text-gray-900 dark:text-white mb-3 mt-6 first:mt-0;
+  }
+  
+  h1 { @apply text-2xl; }
+  h2 { @apply text-xl; }
+  h3 { @apply text-lg; }
+  h4 { @apply text-base; }
+  h5 { @apply text-sm; }
+  h6 { @apply text-sm; }
+
+  /* Paragraphs */
+  p {
+    @apply mb-4 last:mb-0;
+  }
+
+  /* Lists */
+  ul, ol {
+    @apply mb-4 pl-6;
+  }
+  
+  ul {
+    @apply list-disc;
+  }
+  
+  ol {
+    @apply list-decimal;
+  }
+  
+  li {
+    @apply mb-1;
+  }
+
+  /* Code blocks */
+  pre {
+    @apply bg-gray-100 dark:bg-gray-800 rounded-lg p-4 mb-4 overflow-x-auto text-sm;
+  }
+  
+  pre code {
+    @apply bg-transparent p-0 text-sm;
+  }
+
+  /* Inline code */
+  :not(pre) > code {
+    @apply bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-1.5 py-0.5 rounded text-sm font-mono;
+  }
+
+  /* Tables */
+  table {
+    @apply w-full border-collapse border border-gray-300 dark:border-gray-600 mb-4 text-sm;
+  }
+  
+  th, td {
+    @apply border border-gray-300 dark:border-gray-600 px-3 py-2 text-left;
+  }
+  
+  th {
+    @apply bg-gray-100 dark:bg-gray-800 font-semibold;
+  }
+  
+  td {
+    @apply bg-white dark:bg-gray-900;
+  }
+
+  /* Blockquotes */
+  blockquote {
+    @apply border-l-4 border-gray-300 dark:border-gray-600 pl-4 italic text-gray-700 dark:text-gray-300 mb-4;
+  }
+
+  /* Links */
+  a {
+    @apply text-blue-600 dark:text-blue-400 hover:underline;
+  }
+
+  /* Horizontal rules */
+  hr {
+    @apply border-t border-gray-300 dark:border-gray-600 my-6;
+  }
+
+  /* Emphasis */
+  strong {
+    @apply font-semibold;
+  }
+  
+  em {
+    @apply italic;
+  }
+
+  /* Strike-through */
+  del {
+    @apply line-through;
+  }
+
+  /* Syntax highlighting theme adjustments */
+  .hljs {
+    @apply bg-gray-100 dark:bg-gray-800 !important;
+  }
+
+  /* Math rendering adjustments */
+  .katex {
+    @apply text-current;
+  }
+
+  /* Better spacing for nested lists */
+  li > ul, li > ol {
+    @apply mt-2;
+  }
+
+  /* Code block language indicator */
+  pre[class*="language-"] {
+    @apply relative;
+  }
+
+  /* Checkbox lists (for task lists) */
+  input[type="checkbox"] {
+    @apply mr-2;
+  }
 }

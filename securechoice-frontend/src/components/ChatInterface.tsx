@@ -2,6 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
 
 export interface ChatMessage {
   id: string;
@@ -129,8 +131,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                     </div>
                   )}
                   <div className="text-sm leading-relaxed">
-                    <div className="overflow-x-auto">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <div className="overflow-x-auto markdown-content">
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+                      >
                         {message.content}
                       </ReactMarkdown>
                     </div>

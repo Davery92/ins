@@ -59,12 +59,11 @@ const Home: React.FC = () => {
   const { user, token } = useAuth();
   const {
     documents,
+    setDocuments,
     selectedDocumentIds,
     selectedDocuments,
     setSelectedDocumentIds,
     toggleDocumentSelection,
-    addDocuments,
-    updateDocument,
     selectedPolicyType,
     setSelectedPolicyType,
     chatHistory,
@@ -74,7 +73,6 @@ const Home: React.FC = () => {
     startNewSession,
     setCurrentCustomer,
     setCurrentChatSession,
-    createChatSession,
     currentChatSessionId
   } = useDocuments();
 
@@ -212,6 +210,7 @@ const Home: React.FC = () => {
   };
 
   const handleSelectCustomer = async (customer: Customer) => {
+    console.log('👤 Selecting customer:', customer.name, customer.id);
     setSelectedCustomer(customer);
     // Set current customer in DocumentContext to enable chat session association
     setCurrentCustomer(customer.id);
@@ -226,12 +225,17 @@ const Home: React.FC = () => {
 
     // Fetch customer-specific data
     setLoadingCustomerData(true);
-    Promise.all([
-      fetchCustomerDocuments(customer.id),
-      fetchCustomerChats(customer.id)
-    ]).finally(() => {
+    try {
+      const [documents, chats] = await Promise.all([
+        fetchCustomerDocuments(customer.id),
+        fetchCustomerChats(customer.id)
+      ]);
+      console.log('👤 Customer data loaded - Documents:', documents.length, 'Chats:', chats.length);
+    } catch (error) {
+      console.error('Error loading customer data:', error);
+    } finally {
       setLoadingCustomerData(false);
-    });
+    }
   };
 
   const handleConvertToCustomer = async (prospectId: string) => {
@@ -305,19 +309,7 @@ const Home: React.FC = () => {
     if (pendingFiles.length === 0 || !selectedCustomer) return;
     
     const file = pendingFiles[0];
-    const uploadedFile: UploadedFile = {
-      id: Date.now().toString(),
-      name: documentTitle.trim() || file.name,
-      file: file,
-      size: file.size,
-      type: file.type,
-      progress: 100,
-      status: 'completed',
-      uploadedAt: new Date()
-    };
 
-    // Add documents locally with custom title and policy type
-    addDocuments([uploadedFile]);
     setShowDocumentUploadModal(false);
     
     // Reset form
@@ -325,41 +317,69 @@ const Home: React.FC = () => {
     setDocumentTitle('');
     setDocumentPolicyType('general-liability');
 
-    // Extract text via backend and update document
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('name', documentTitle.trim());
-      formData.append('policyType', documentPolicyType);
-      if (selectedCustomer) {
-        formData.append('customerId', selectedCustomer.id);
-      }
-      
-      const res = await fetch(`${API_BASE_URL}/documents`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData,
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Refresh customer documents if we have a selected customer
+    // Upload document to backend with duplicate name handling
+    let fileName = documentTitle.trim() || file.name;
+    let uploadSuccessful = false;
+    
+    while (!uploadSuccessful) {
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('name', fileName);
+        formData.append('policyType', documentPolicyType);
         if (selectedCustomer) {
-          fetchCustomerDocuments(selectedCustomer.id);
+          formData.append('customerId', selectedCustomer.id);
         }
-      } else {
-        console.error('Failed to upload document:', await res.text());
+        
+        const res = await fetch(`${API_BASE_URL}/documents`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`
+          },
+          body: formData,
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          console.log('Document uploaded successfully:', data);
+          
+          // Refresh customer documents if we have a selected customer
+          if (selectedCustomer) {
+            await fetchCustomerDocuments(selectedCustomer.id);
+          }
+          
+          // Update global documents state directly (don't call addDocuments as it tries to upload again)
+          setDocuments(prev => [...prev, data]);
+          setSelectedDocumentIds(prev => [...prev, data.id]);
+          uploadSuccessful = true;
+          
+        } else if (res.status === 409) {
+          // Handle duplicate name - prompt user for new name
+          const newName = window.prompt(
+            `A document named "${fileName}" already exists. Please enter a new name:`,
+            fileName
+          )?.trim();
+          
+          if (!newName) {
+            // User cancelled - abort upload
+            alert('Document upload cancelled.');
+            return;
+          }
+          
+          fileName = newName;
+          // Continue the loop with the new name
+          
+        } else {
+          console.error('Failed to upload document:', await res.text());
+          alert('Failed to upload document. Please try again.');
+          return;
+        }
+      } catch (err) {
+        console.error('Error uploading document:', err);
+        alert('Error uploading document. Please check your connection and try again.');
+        return;
       }
-    } catch (err) {
-      console.error('Error uploading document:', err);
     }
-
-    // Update AI service context with document names
-    aiService.updatePolicyContext([
-      ...documents.map(d => d.name),
-      uploadedFile.name
-    ]);
   };
 
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -514,7 +534,7 @@ const Home: React.FC = () => {
         timestamp: new Date()
       };
       setChatHistory(prev => [...prev, titleMsg]);
-      await addChatMessage(titleMsg);
+      // Don't save this system-generated message to the backend chat session
       // AI message streaming
       const aiMessageId = generateMessageId();
       const aiMessage: ChatMessage = {
@@ -533,7 +553,8 @@ const Home: React.FC = () => {
         });
         const completedMessage: ChatMessage = { ...aiMessage, content: finalContent, isStreaming: false };
         setChatHistory(prev => prev.map(msg => msg.id === aiMessageId ? completedMessage : msg));
-        await addChatMessage(completedMessage);
+        // Save only the AI response to the backend, not the system-generated title message
+        await addChatMessage(completedMessage, `Document Analysis: ${doc.name}`);
       } catch (error) {
         console.error('Risk Assessment error:', error);
       }
@@ -561,7 +582,7 @@ const Home: React.FC = () => {
       timestamp: new Date()
     };
     setChatHistory(prev => [...prev, titleMsg]);
-    await addChatMessage(titleMsg);
+    // Don't save this system-generated message to the backend chat session
 
     // Create AI message for streaming
     const aiMessageId = generateMessageId();
@@ -584,7 +605,8 @@ const Home: React.FC = () => {
       // Finalize AI message
       const completedMessage: ChatMessage = { ...aiMessage, content: finalContent, isStreaming: false };
       setChatHistory((prev: ChatMessage[]) => prev.map(msg => msg.id === aiMessageId ? completedMessage : msg));
-      await addChatMessage(completedMessage);
+      // Save only the AI response to the backend, not the system-generated title message
+      await addChatMessage(completedMessage, `Compare Policies: ${docNames}`);
     } catch (error) {
       console.error('Compare error:', error);
     } finally {
@@ -595,6 +617,7 @@ const Home: React.FC = () => {
   // API functions for customer data
   const fetchCustomerDocuments = async (customerId: string) => {
     try {
+      console.log('📄 Fetching documents for customer:', customerId);
       const response = await fetch(`${API_BASE_URL}/customers/${customerId}/documents`, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -602,8 +625,11 @@ const Home: React.FC = () => {
       });
       if (response.ok) {
         const docs = await response.json();
+        console.log('📄 Fetched', docs.length, 'documents for customer:', customerId, docs);
         setCustomerDocuments(prev => ({ ...prev, [customerId]: docs }));
         return docs;
+      } else {
+        console.error('Failed to fetch customer documents:', response.status, await response.text());
       }
     } catch (error) {
       console.error('Error fetching customer documents:', error);
@@ -772,6 +798,56 @@ const Home: React.FC = () => {
   const handleTitleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       setIsEditingTitle(false);
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string, documentName: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent any parent click handlers
+    
+    if (!window.confirm(`Are you sure you want to delete "${documentName}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      console.log('🗑️ Deleting document:', documentId, documentName);
+      
+      // First, optimistically update the UI by removing from customer documents
+      if (selectedCustomer) {
+        setCustomerDocuments(prev => ({
+          ...prev,
+          [selectedCustomer.id]: prev[selectedCustomer.id]?.filter(doc => doc.id !== documentId) || []
+        }));
+      }
+      
+      // Call the backend to delete the document
+      const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        // Update the global documents state directly (don't call removeDocument as it makes another API call)
+        setDocuments(prev => prev.filter(doc => doc.id !== documentId));
+        setSelectedDocumentIds(prev => prev.filter(id => id !== documentId));
+        console.log('✅ Document deleted successfully');
+      } else {
+        // If backend deletion failed, revert the optimistic update
+        if (selectedCustomer) {
+          await fetchCustomerDocuments(selectedCustomer.id);
+        }
+        throw new Error(`Backend deletion failed: ${response.status}`);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error deleting document:', error);
+      alert('Failed to delete document. Please try again.');
+      
+      // Refresh customer documents to restore correct state
+      if (selectedCustomer) {
+        await fetchCustomerDocuments(selectedCustomer.id);
+      }
     }
   };
 
@@ -1062,7 +1138,7 @@ const Home: React.FC = () => {
                   {getCustomerDocuments(selectedCustomer.id).length > 0 ? (
                     <div className="space-y-2">
                       {getCustomerDocuments(selectedCustomer.id).map((doc) => (
-                        <div key={doc.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700">
+                        <div key={doc.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors group">
                           <div className="flex items-center gap-2">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" className="text-red-500">
                               <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
@@ -1072,8 +1148,19 @@ const Home: React.FC = () => {
                               <div className="text-xs text-gray-500 dark:text-gray-400">{doc.policyType || doc.type}</div>
                             </div>
                           </div>
-                          <div className="text-xs text-gray-400">
-                            {new Date(doc.uploadedAt).toLocaleDateString()}
+                          <div className="flex items-center gap-2">
+                            <div className="text-xs text-gray-400">
+                              {new Date(doc.uploadedAt).toLocaleDateString()}
+                            </div>
+                            <button
+                              onClick={(e) => handleDeleteDocument(doc.id, doc.name, e)}
+                              className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 transition-all p-1"
+                              title="Delete document"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                              </svg>
+                            </button>
                           </div>
                         </div>
                       ))}
