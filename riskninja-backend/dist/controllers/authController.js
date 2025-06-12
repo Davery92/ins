@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.registerAdmin = exports.getProfile = exports.login = exports.register = void 0;
+exports.changePassword = exports.registerAdmin = exports.getProfile = exports.login = exports.register = void 0;
 const bcrypt_1 = __importDefault(require("bcrypt"));
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const models_1 = require("../models");
@@ -202,4 +202,52 @@ const registerAdmin = async (req, res) => {
     }
 };
 exports.registerAdmin = registerAdmin;
+/**
+ * Change authenticated user's password
+ */
+const changePassword = async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    try {
+        if (!req.user?.id) {
+            res.status(401).json({ error: 'User not authenticated' });
+            return;
+        }
+        // Validate required fields
+        if (!currentPassword || !newPassword) {
+            res.status(400).json({ error: 'Current password and new password are required' });
+            return;
+        }
+        // Validate new password length
+        if (newPassword.length < 6) {
+            res.status(400).json({ error: 'New password must be at least 6 characters long' });
+            return;
+        }
+        // Find the user
+        const user = await models_1.UserModel.findByPk(req.user.id);
+        if (!user) {
+            res.status(404).json({ error: 'User not found' });
+            return;
+        }
+        // Verify current password
+        const isValidCurrentPassword = await bcrypt_1.default.compare(currentPassword, user.password);
+        if (!isValidCurrentPassword) {
+            res.status(400).json({ error: 'Current password is incorrect' });
+            return;
+        }
+        // Hash new password
+        const saltRounds = 12;
+        const hashedNewPassword = await bcrypt_1.default.hash(newPassword, saltRounds);
+        // Update user password
+        user.password = hashedNewPassword;
+        await user.save();
+        res.json({
+            message: 'Password changed successfully'
+        });
+    }
+    catch (error) {
+        console.error('Failed to change password:', error);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
+};
+exports.changePassword = changePassword;
 //# sourceMappingURL=authController.js.map

@@ -26,5 +26,23 @@ router.patch('/users/:userId/activate', adminController_1.activateUser);
  * @access  Private (Admin)
  */
 router.patch('/users/:userId/deactivate', adminController_1.deactivateUser);
+/**
+ * @route   POST /api/admin/users
+ * @desc    Create a new user within the admin's company
+ * @access  Private (Admin)
+ */
+router.post('/users', adminController_1.createUser);
+/**
+ * @route   PATCH /api/admin/users/:userId/password
+ * @desc    Change a user's password
+ * @access  Private (Admin)
+ */
+router.patch('/users/:userId/password', adminController_1.changeUserPassword);
+/**
+ * @route   DELETE /api/admin/users/:userId
+ * @desc    Delete a user from the company
+ * @access  Private (Admin)
+ */
+router.delete('/users/:userId', adminController_1.deleteUser);
 exports.default = router;
 //# sourceMappingURL=admin.js.map

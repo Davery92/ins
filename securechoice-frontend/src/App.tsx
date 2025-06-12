@@ -14,6 +14,7 @@ import Login from './pages/Login';
 import RegisterAdmin from './pages/RegisterAdmin';
 import SystemAdmin from './pages/SystemAdmin';
 import Comparison from './pages/Comparison';
+import ChangePassword from './pages/ChangePassword';
 
 function App() {
   return (
@@ -41,6 +42,7 @@ function App() {
                           <Route path="/support" element={<Support />} />
                           <Route path="/admin" element={<Admin />} />
                           <Route path="/sysadmin" element={<SystemAdmin />} />
+                          <Route path="/change-password" element={<ChangePassword />} />
                         </Routes>
                       </div>
                     </div>

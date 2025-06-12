@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { register, login, getProfile, registerAdmin } from '../controllers/authController';
+import { register, login, getProfile, registerAdmin, changePassword } from '../controllers/authController';
 import { authenticateToken } from '../middleware/auth';
 import { Request, Response } from 'express';
 import { UserModel, CompanyModel, sequelize } from '../models';
@@ -14,6 +14,13 @@ router.post('/login', login);
 
 // Protected routes
 router.get('/profile', authenticateToken, getProfile);
+
+/**
+ * @route   PATCH /api/auth/change-password
+ * @desc    Change user's own password
+ * @access  Private
+ */
+router.patch('/change-password', authenticateToken, changePassword);
 
 /**
  * @route   POST /api/auth/register-admin

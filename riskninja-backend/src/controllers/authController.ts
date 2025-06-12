@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { UserModel, CompanyModel, sequelize } from '../models';
-import { LoginRequest, RegisterRequest } from '../types';
+import { LoginRequest, RegisterRequest, AuthRequest } from '../types';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
   const { email, password, firstName, lastName } = req.body;
@@ -217,5 +217,60 @@ export const registerAdmin = async (req: Request, res: Response): Promise<void> 
     await transaction.rollback();
     console.error('Admin registration error:', error);
     res.status(500).json({ error: error instanceof Error ? error.message : 'Internal server error' });
+  }
+};
+
+/**
+ * Change authenticated user's password
+ */
+export const changePassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  const { currentPassword, newPassword } = req.body;
+
+  try {
+    if (!req.user?.id) {
+      res.status(401).json({ error: 'User not authenticated' });
+      return;
+    }
+
+    // Validate required fields
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ error: 'Current password and new password are required' });
+      return;
+    }
+
+    // Validate new password length
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: 'New password must be at least 6 characters long' });
+      return;
+    }
+
+    // Find the user
+    const user = await UserModel.findByPk(req.user.id);
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    // Verify current password
+    const isValidCurrentPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!isValidCurrentPassword) {
+      res.status(400).json({ error: 'Current password is incorrect' });
+      return;
+    }
+
+    // Hash new password
+    const saltRounds = 12;
+    const hashedNewPassword = await bcrypt.hash(newPassword, saltRounds);
+
+    // Update user password
+    user.password = hashedNewPassword;
+    await user.save();
+
+    res.json({
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    console.error('Failed to change password:', error);
+    res.status(500).json({ error: 'Failed to change password' });
   }
 }; 

@@ -16,6 +16,12 @@ router.post('/login', authController_1.login);
 // Protected routes
 router.get('/profile', auth_1.authenticateToken, authController_1.getProfile);
 /**
+ * @route   PATCH /api/auth/change-password
+ * @desc    Change user's own password
+ * @access  Private
+ */
+router.patch('/change-password', auth_1.authenticateToken, authController_1.changePassword);
+/**
  * @route   POST /api/auth/register-admin
  * @desc    Register a new admin user with company creation
  * @access  Public

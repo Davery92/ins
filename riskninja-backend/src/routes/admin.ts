@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { isAdmin } from '../middleware/isAdmin';
-import { getCompanyUsers, activateUser, deactivateUser } from '../controllers/adminController';
+import { getCompanyUsers, activateUser, deactivateUser, createUser, changeUserPassword, deleteUser } from '../controllers/adminController';
 
 const router = Router();
 
@@ -29,5 +29,26 @@ router.patch('/users/:userId/activate', activateUser);
  * @access  Private (Admin)
  */
 router.patch('/users/:userId/deactivate', deactivateUser);
+
+/**
+ * @route   POST /api/admin/users
+ * @desc    Create a new user within the admin's company
+ * @access  Private (Admin)
+ */
+router.post('/users', createUser);
+
+/**
+ * @route   PATCH /api/admin/users/:userId/password
+ * @desc    Change a user's password
+ * @access  Private (Admin)
+ */
+router.patch('/users/:userId/password', changeUserPassword);
+
+/**
+ * @route   DELETE /api/admin/users/:userId
+ * @desc    Delete a user from the company
+ * @access  Private (Admin)
+ */
+router.delete('/users/:userId', deleteUser);
 
 export default router; 

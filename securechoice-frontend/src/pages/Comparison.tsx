@@ -242,57 +242,160 @@ Please provide a detailed and helpful response based on the report content.
       const originalContent = reportContentRef.current;
       const clonedContent = originalContent.cloneNode(true) as HTMLElement;
       
-      // Create a container for the PDF with proper styling
+      // Create a container for the PDF with proper styling and page break handling
       const pdfContainer = document.createElement('div');
       pdfContainer.style.cssText = `
         font-family: Arial, sans-serif;
-        line-height: 1.6;
+        line-height: 1.5;
         color: #333;
-        max-width: 800px;
+        max-width: 750px;
         margin: 0 auto;
-        padding: 40px;
+        padding: 30px;
         background: white;
       `;
 
-      // Add header
+      // Add comprehensive CSS for page breaks
+      const styleElement = document.createElement('style');
+      styleElement.textContent = `
+        @media print {
+          * {
+            color: #333 !important;
+            background: transparent !important;
+          }
+          
+          /* Prevent awkward page breaks */
+          h1, h2, h3, h4, h5, h6 {
+            page-break-after: avoid;
+            page-break-inside: avoid;
+            break-after: avoid;
+            break-inside: avoid;
+          }
+          
+          p, li {
+            page-break-inside: avoid;
+            break-inside: avoid;
+            orphans: 3;
+            widows: 3;
+          }
+          
+          table {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          
+          tr {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          
+          blockquote {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          
+          pre, code {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          
+          ul, ol {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+          
+          /* Ensure sufficient space before page breaks */
+          h1 { margin-top: 30px; margin-bottom: 20px; }
+          h2 { margin-top: 25px; margin-bottom: 15px; }
+          h3 { margin-top: 20px; margin-bottom: 10px; }
+          p { margin-bottom: 12px; }
+          
+          /* Force page breaks before major sections if needed */
+          .page-break-before {
+            page-break-before: always;
+            break-before: page;
+          }
+        }
+      `;
+
+      // Add header with page break protection
       const header = document.createElement('div');
+      header.style.cssText = `
+        page-break-inside: avoid;
+        break-inside: avoid;
+        margin-bottom: 30px;
+      `;
       header.innerHTML = `
-        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px;">
+        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; page-break-after: avoid;">
           Insurance Policy Comparison Report
         </h1>
-        <p style="color: #666; margin-bottom: 30px; font-size: 14px;">
+        <p style="color: #666; margin-bottom: 20px; font-size: 14px; page-break-after: avoid;">
           Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
         </p>
       `;
 
       // Apply PDF-friendly styles to the cloned content
       clonedContent.style.cssText = `
-        font-size: 14px;
-        line-height: 1.6;
+        font-size: 13px;
+        line-height: 1.5;
         color: #333;
       `;
 
-      // Fix any dark mode styles for PDF
+      // Fix any dark mode styles and add page break protection to elements
       const allElements = clonedContent.querySelectorAll('*');
       allElements.forEach(el => {
         const element = el as HTMLElement;
         element.style.color = '#333';
         element.style.backgroundColor = 'transparent';
+        
+        // Add page break protection to specific elements
+        if (['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
+          element.style.pageBreakAfter = 'avoid';
+          element.style.pageBreakInside = 'avoid';
+          element.style.breakAfter = 'avoid';
+          element.style.breakInside = 'avoid';
+        }
+        
+        if (['P', 'LI', 'TD', 'TH'].includes(element.tagName)) {
+          element.style.pageBreakInside = 'avoid';
+          element.style.breakInside = 'avoid';
+        }
+        
+        if (['TABLE', 'BLOCKQUOTE', 'PRE', 'UL', 'OL'].includes(element.tagName)) {
+          element.style.pageBreakInside = 'avoid';
+          element.style.breakInside = 'avoid';
+        }
       });
 
+      // Append style and content
+      pdfContainer.appendChild(styleElement);
       pdfContainer.appendChild(header);
       pdfContainer.appendChild(clonedContent);
 
       const opt = {
-        margin: 0.5,
+        margin: [0.75, 0.5, 0.75, 0.5], // top, left, bottom, right
         filename: `comparison-report-${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: { 
-          scale: 2,
-          useCORS: true,
-          allowTaint: true
+        image: { 
+          type: 'jpeg', 
+          quality: 0.95 
         },
-        jsPDF: { unit: 'in', format: 'letter', orientation: 'portrait' }
+        html2canvas: { 
+          scale: 1.5, // Reduced scale for better performance and less splitting
+          useCORS: true,
+          allowTaint: true,
+          letterRendering: true,
+          logging: false,
+          height: null, // Let it auto-calculate
+          width: null   // Let it auto-calculate
+        },
+        jsPDF: { 
+          unit: 'in', 
+          format: 'letter', 
+          orientation: 'portrait',
+          compress: true
+        },
+        pagebreak: {
+          mode: ['avoid-all', 'css', 'legacy']
+        }
       };
 
       await html2pdf().from(pdfContainer).set(opt).save();
