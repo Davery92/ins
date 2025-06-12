@@ -401,175 +401,51 @@ Please provide a detailed and helpful response based on the comparison report co
     }
   };
 
-  const handleExportPDF = async () => {
+  const handleExportPDF = () => {
     if (!comparisonReport || !reportContentRef.current) return;
 
-    try {
-      // Clone the actual rendered content from the DOM
-      const originalContent = reportContentRef.current;
-      const clonedContent = originalContent.cloneNode(true) as HTMLElement;
-      
-      // Create a container for the PDF with proper styling and page break handling
-      const pdfContainer = document.createElement('div');
-      pdfContainer.style.cssText = `
-        font-family: Arial, sans-serif;
-        line-height: 1.5;
-        color: #333;
-        max-width: 750px;
-        margin: 0 auto;
-        padding: 30px;
-        background: white;
-      `;
+    // Open a new window for printing
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
-      // Add comprehensive CSS for page breaks
-      const styleElement = document.createElement('style');
-      styleElement.textContent = `
-        @media print {
-          * {
-            color: #333 !important;
-            background: transparent !important;
-          }
-          
-          /* Prevent awkward page breaks */
-          h1, h2, h3, h4, h5, h6 {
-            page-break-after: avoid;
-            page-break-inside: avoid;
-            break-after: avoid;
-            break-inside: avoid;
-          }
-          
-          p, li {
-            page-break-inside: avoid;
-            break-inside: avoid;
-            orphans: 3;
-            widows: 3;
-          }
-          
-          table {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
-          tr {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
-          blockquote {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
-          pre, code {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
-          ul, ol {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          
-          /* Ensure sufficient space before page breaks */
-          h1 { margin-top: 30px; margin-bottom: 20px; }
-          h2 { margin-top: 25px; margin-bottom: 15px; }
-          h3 { margin-top: 20px; margin-bottom: 10px; }
-          p { margin-bottom: 12px; }
-          
-          /* Force page breaks before major sections if needed */
-          .page-break-before {
-            page-break-before: always;
-            break-before: page;
-          }
-        }
-      `;
+    // Get the inner HTML of the report content
+    const contentHTML = reportContentRef.current.innerHTML;
 
-      // Add header with page break protection
-      const header = document.createElement('div');
-      header.style.cssText = `
-        page-break-inside: avoid;
-        break-inside: avoid;
-        margin-bottom: 30px;
-      `;
-      header.innerHTML = `
-        <h1 style="color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; page-break-after: avoid;">
-          Insurance Policy Comparison Report
-        </h1>
-        <p style="color: #666; margin-bottom: 20px; font-size: 14px; page-break-after: avoid;">
-          Generated on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}
-        </p>
-      `;
+    // Write styled HTML to the print window
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Insurance Policy Comparison Report</title>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; margin: 20px; color: #333; }
+            h1 { color: #2563eb; border-bottom: 2px solid #2563eb; padding-bottom: 10px; margin-bottom: 20px; }
+            h2, h3, h4, h5, h6 { color: #2563eb; }
+            p { margin: 10px 0; }
+            ul, ol { margin: 10px 0; padding-left: 30px; }
+            pre, code { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+            blockquote { border-left: 4px solid #2563eb; margin: 10px 0; padding-left: 15px; background: #f8f9fa; }
+            @media print {
+              body { margin: 0; }
+              h1 { page-break-before: avoid; }
+              h2, h3 { page-break-after: avoid; }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>Insurance Policy Comparison Report</h1>
+          <p><strong>Generated:</strong> ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}</p>
+          ${contentHTML}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
 
-      // Apply PDF-friendly styles to the cloned content
-      clonedContent.style.cssText = `
-        font-size: 13px;
-        line-height: 1.5;
-        color: #333;
-      `;
-
-      // Fix any dark mode styles and add page break protection to elements
-      const allElements = clonedContent.querySelectorAll('*');
-      allElements.forEach(el => {
-        const element = el as HTMLElement;
-        element.style.color = '#333';
-        element.style.backgroundColor = 'transparent';
-        
-        // Add page break protection to specific elements
-        if (['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) {
-          element.style.pageBreakAfter = 'avoid';
-          element.style.pageBreakInside = 'avoid';
-          element.style.breakAfter = 'avoid';
-          element.style.breakInside = 'avoid';
-        }
-        
-        if (['P', 'LI', 'TD', 'TH'].includes(element.tagName)) {
-          element.style.pageBreakInside = 'avoid';
-          element.style.breakInside = 'avoid';
-        }
-        
-        if (['TABLE', 'BLOCKQUOTE', 'PRE', 'UL', 'OL'].includes(element.tagName)) {
-          element.style.pageBreakInside = 'avoid';
-          element.style.breakInside = 'avoid';
-        }
-      });
-
-      // Append style and content
-      pdfContainer.appendChild(styleElement);
-      pdfContainer.appendChild(header);
-      pdfContainer.appendChild(clonedContent);
-
-      const opt = {
-        margin: [0.75, 0.5, 0.75, 0.5], // top, left, bottom, right
-        filename: `comparison-report-${new Date().toISOString().split('T')[0]}.pdf`,
-        image: { 
-          type: 'jpeg', 
-          quality: 0.95 
-        },
-        html2canvas: { 
-          scale: 1.5, // Reduced scale for better performance and less splitting
-          useCORS: true,
-          allowTaint: true,
-          letterRendering: true,
-          logging: false,
-          height: null, // Let it auto-calculate
-          width: null   // Let it auto-calculate
-        },
-        jsPDF: { 
-          unit: 'in', 
-          format: 'letter', 
-          orientation: 'portrait',
-          compress: true
-        },
-        pagebreak: {
-          mode: ['avoid-all', 'css', 'legacy']
-        }
-      };
-
-      await html2pdf().from(pdfContainer).set(opt).save();
-    } catch (error) {
-      console.error('PDF export failed:', error);
-      alert('Failed to export PDF. Please try again.');
-    }
+    // Wait for content to load then print
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
   const handleExportDOC = () => {

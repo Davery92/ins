@@ -58,8 +58,8 @@ const Header: React.FC = () => {
             <Link className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/comparison')}`} to="/comparison">
               Compare
             </Link>
-            <Link className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/chat-history')}`} to="/chat-history">
-              Chat History
+            <Link className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/research')}`} to="/research">
+              Research
             </Link>
             <Link className={`text-sm font-medium leading-normal hover:text-primary transition-colors ${isActive('/support')}`} to="/support">
               Support

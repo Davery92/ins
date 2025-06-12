@@ -18,6 +18,7 @@ interface FileUploaderProps {
   maxFileSize?: number; // in MB
   acceptedTypes?: string[];
   className?: string;
+  disabled?: boolean;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
@@ -25,7 +26,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   maxFiles = 10,
   maxFileSize = 25,
   acceptedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-  className = ''
+  className = '',
+  disabled = false
 }) => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadingFiles, setUploadingFiles] = useState<UploadedFile[]>([]);
@@ -134,10 +136,10 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     e.preventDefault();
     setIsDragOver(false);
     
-    if (e.dataTransfer.files) {
+    if (!disabled && e.dataTransfer.files) {
       handleFiles(e.dataTransfer.files);
     }
-  }, [handleFiles]);
+  }, [handleFiles, disabled]);
 
   const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -146,7 +148,9 @@ const FileUploader: React.FC<FileUploaderProps> = ({
   }, [handleFiles]);
 
   const handleClick = () => {
-    fileInputRef.current?.click();
+    if (!disabled) {
+      fileInputRef.current?.click();
+    }
   };
 
   const removeFile = (fileId: string) => {
@@ -185,15 +189,17 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     <div className={className}>
       {/* Drop Zone */}
       <div
-        className={`relative border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all duration-200 ${
-          isDragOver
-            ? 'border-[#1993e5] bg-blue-50'
-            : 'border-[#d0dee7] hover:border-[#1993e5] hover:bg-slate-50'
+        className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-all duration-200 ${
+          disabled 
+            ? 'border-gray-300 bg-gray-100 cursor-not-allowed opacity-50'
+            : isDragOver
+              ? 'border-[#1993e5] bg-blue-50 cursor-pointer'
+              : 'border-[#d0dee7] hover:border-[#1993e5] hover:bg-slate-50 cursor-pointer'
         }`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={handleClick}
+        onDragOver={disabled ? undefined : handleDragOver}
+        onDragLeave={disabled ? undefined : handleDragLeave}
+        onDrop={disabled ? undefined : handleDrop}
+        onClick={disabled ? undefined : handleClick}
       >
         <input
           ref={fileInputRef}

@@ -1,177 +1,235 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
-import { useDocuments } from '../contexts/DocumentContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
+import 'highlight.js/styles/github.css';
+import 'katex/dist/katex.min.css';
+import FileUploader, { UploadedFile } from '../components/FileUploader';
 
-interface ChatMessage {
-  id: string;
-  content: string;
-  sender: 'user' | 'ai';
-  timestamp: string;
-  context?: {
-    policyType?: string;
-    documentCount?: number;
-    documentNames?: string[];
-    sessionId?: string;
+interface ResearchReport {
+  success: boolean;
+  report: string;
+  metadata: {
+    pagesAnalyzed: number;
+    pageTypes: string[];
+    documentCount: number;
+    companyUrl: string;
   };
 }
 
-interface ChatStats {
-  totalMessages: number;
-  userMessages: number;
-  aiMessages: number;
-  lastActivity: string | null;
-}
-
-const ChatHistory: React.FC = () => {
-  const { token, user } = useAuth();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [stats, setStats] = useState<ChatStats | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterSender, setFilterSender] = useState<'all' | 'user' | 'ai'>('all');
+const Research: React.FC = () => {
+  const { token } = useAuth();
+  const location = useLocation();
+  const customerId = (location.state as any)?.customerId;
+  const [url, setUrl] = useState('');
+  const [additionalText, setAdditionalText] = useState('');
+  const [uploadedDocuments, setUploadedDocuments] = useState<UploadedFile[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [reportToView, setReportToView] = useState<ChatMessage | null>(null);
-
-  const navigate = useNavigate();
-  const { documents, setChatHistory, setSelectedPolicyType, setSelectedDocumentIds } = useDocuments();
+  const reportRef = useRef<HTMLDivElement>(null);
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
-  useEffect(() => {
-    if (token) {
-      fetchChatHistory();
-      fetchChatStats();
-    }
-  }, [token]);
-
-  const fetchChatHistory = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/chat/history`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch chat history');
-      }
-
-      const data = await response.json();
-      setMessages(data.messages);
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to load chat history');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleFilesUploaded = (newFiles: UploadedFile[]) => {
+    setUploadedDocuments(prev => [...prev, ...newFiles]);
   };
 
-  const fetchChatStats = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/chat/stats`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch chat stats');
-      }
-
-      const data = await response.json();
-      setStats(data);
-    } catch (error) {
-      console.error('Failed to fetch chat stats:', error);
-    }
+  const removeDocument = (index: number) => {
+    setUploadedDocuments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const clearChatHistory = async () => {
-    if (!window.confirm('Are you sure you want to clear all chat history? This action cannot be undone.')) {
+  const generateResearch = async () => {
+    if (!url.trim()) {
+      setError('Please enter a valid URL');
       return;
     }
 
+    setIsGenerating(true);
+    setError(null);
+    setReport(null);
+
     try {
-      const response = await fetch(`${API_BASE_URL}/chat/history`, {
-        method: 'DELETE',
+      // Process uploaded documents to extract text
+      const processedDocuments = await Promise.all(
+        uploadedDocuments.map(async (doc) => {
+          if (doc.file) {
+            // For now, we'll just use the file name and basic info
+            // In a production system, you'd want to extract text from the file
+            return {
+              name: doc.name,
+              content: `Document: ${doc.name} (${(doc.size / 1024).toFixed(1)} KB, ${doc.type})`,
+              type: doc.file.type
+            };
+          }
+          return {
+            name: doc.name,
+            content: `Document: ${doc.name}`,
+            type: doc.type
+          };
+        })
+      );
+
+      const requestBody = {
+        url: url.trim(),
+        additionalText: additionalText.trim(),
+        documents: processedDocuments
+      };
+
+      console.log('Sending research request:', requestBody);
+
+      const response = await fetch(`${API_BASE_URL}/research/generate`, {
+        method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
+        body: JSON.stringify(requestBody)
       });
 
       if (!response.ok) {
-        throw new Error('Failed to clear chat history');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate research report');
       }
 
-      setMessages([]);
-      setStats(null);
-      fetchChatStats();
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to clear chat history');
+      const result = await response.json();
+      setReport(result);
+
+      // Save report under customer if provided
+      if (customerId) {
+        try {
+          const saveResponse = await fetch(
+            `${API_BASE_URL}/customers/${customerId}/underwriting-reports`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                title: `Underwriting Research Report - ${new Date().toLocaleDateString()}`,
+                content: result.report
+              })
+            }
+          );
+          if (!saveResponse.ok) {
+            console.error('Failed to save underwriting report');
+          }
+        } catch (err) {
+          console.error('Error saving underwriting report:', err);
+        }
+      }
+
+    } catch (err) {
+      console.error('Research generation error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to generate research report');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
-  const exportChatHistory = () => {
-    const exportData = messages.map(msg => ({
-      timestamp: new Date(msg.timestamp).toLocaleString(),
-      sender: msg.sender,
-      content: msg.content,
-      context: msg.context,
-    }));
+  const exportToPDF = () => {
+    if (!report || !reportRef.current) return;
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `riskninja-chat-history-${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
 
-  const filteredMessages = messages.filter(message => {
-    const matchesSearch = message.content.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSender = filterSender === 'all' || message.sender === filterSender;
-    return matchesSearch && matchesSender;
-  });
-
-  // Group messages into chat sessions by sessionId, excluding saved reports
-  const sessions = filteredMessages
-    .filter(msg => !msg.content.startsWith('RISKNINJA POLICY ANALYSIS REPORT'))
-    .reduce((acc: { sessionId: string; messages: ChatMessage[] }[], message) => {
-      const sid = message.context?.sessionId || 'default';
-      let session = acc.find(s => s.sessionId === sid);
-      if (!session) {
-        session = { sessionId: sid, messages: [] };
-        acc.push(session);
-      }
-      session.messages.push(message);
-      return acc;
-    }, []);
-
-  // State to track expanded session
-  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
-
-  const formatTimestamp = (timestamp: string) => {
-    return new Date(timestamp).toLocaleString();
-  };
-
-  const resumeSession = (session: { sessionId: string; messages: ChatMessage[] }) => {
-    const resumed = session.messages.map(msg => ({
-      id: msg.id,
-      content: msg.content,
-      sender: msg.sender,
-      timestamp: new Date(msg.timestamp),
-      isStreaming: false
-    }));
-    setSelectedPolicyType(session.messages[0].context?.policyType ?? 'general-liability');
-    const docNames = session.messages[0].context?.documentNames || [];
-    const matchingIds = documents.filter(doc => docNames.includes(doc.name)).map(doc => doc.id);
-    setSelectedDocumentIds(matchingIds);
-    setChatHistory(resumed);
-    navigate('/');
+    const reportContent = reportRef.current.innerHTML;
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Underwriting Research Report</title>
+          <style>
+            body { 
+              font-family: Arial, sans-serif; 
+              line-height: 1.6; 
+              margin: 20px; 
+              color: #333;
+            }
+            h1, h2, h3 { color: #2563eb; }
+            h1 { border-bottom: 2px solid #2563eb; padding-bottom: 10px; }
+            ul, ol { margin: 10px 0; padding-left: 30px; }
+            p { margin: 10px 0; }
+            pre { background: #f4f4f4; padding: 10px; border-radius: 5px; }
+            blockquote { 
+              border-left: 4px solid #2563eb; 
+              margin: 10px 0; 
+              padding-left: 15px; 
+              background: #f8f9fa;
+            }
+            @media print {
+              body { margin: 0; }
+              h1 { page-break-before: avoid; }
+              h2, h3 { page-break-after: avoid; }
+            }
+            
+            /* Table styles */
+            table {
+              border-collapse: collapse;
+              margin: 1rem 0;
+              width: 100%;
+            }
+            table th, table td {
+              border: 1px solid #e2e8f0;
+              padding: 0.5rem 0.75rem;
+              text-align: left;
+            }
+            table th {
+              background-color: #f8fafc;
+              font-weight: 600;
+            }
+            
+            /* Code block styles */
+            pre {
+              background-color: #f8fafc;
+              border-radius: 0.375rem;
+              padding: 1rem;
+              overflow-x: auto;
+            }
+            code {
+              font-family: monospace;
+              font-size: 0.9em;
+              padding: 0.2em 0.4em;
+              border-radius: 0.25rem;
+              background-color: rgba(0, 0, 0, 0.05);
+            }
+            
+            /* Math expression styles */
+            .katex-display {
+              overflow-x: auto;
+              overflow-y: hidden;
+              padding: 0.5rem 0;
+            }
+            .katex {
+              font-size: 1.1em;
+            }
+          </style>
+          
+          <!-- Include highlight.js styles -->
+          <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github.min.css">
+          
+          <!-- Include KaTeX styles -->
+          <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
+        </head>
+        <body>
+          ${reportContent}
+        </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    
+    // Wait a moment for content to load then print
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
 
   if (!token) {
@@ -182,229 +240,178 @@ const ChatHistory: React.FC = () => {
             Please Sign In
           </h2>
           <p className="text-accent dark:text-dark-muted">
-            You need to be signed in to view your chat history.
+            You need to be signed in to use the research feature.
           </p>
         </div>
       </div>
     );
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex-1 flex flex-col max-w-6xl mx-auto p-6">
+    <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">
-          Chat History
+          Underwriting Research
         </h1>
         <p className="text-accent dark:text-dark-muted">
-          View and manage your conversation history with RiskNinja AI
+          Generate comprehensive underwriting analysis by researching company websites, adding context, and uploading supporting documents.
         </p>
       </div>
 
-      {/* Saved Reports Section */}
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">Saved Reports</h2>
-        {messages.filter(msg => msg.content.startsWith('RISKNINJA POLICY ANALYSIS REPORT')).length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            {messages.filter(msg => msg.content.startsWith('RISKNINJA POLICY ANALYSIS REPORT')).map(msg => (
-              <button
-                key={msg.id}
-                onClick={() => setReportToView(msg)}
-                className="p-4 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg text-left hover:shadow transition-shadow"
-              >
-                <div className="font-medium text-secondary dark:text-dark-text truncate">
-                  Report generated {formatTimestamp(msg.timestamp)}
+      {/* Research Form */}
+      <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg p-6 mb-6">
+        <h2 className="text-lg font-semibold text-secondary dark:text-dark-text mb-4">
+          Research Parameters
+        </h2>
+
+        {/* URL Input */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">
+            Company Website URL *
+          </label>
+          <input
+            type="url"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://company.com"
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-transparent"
+            disabled={isGenerating}
+          />
+          <p className="text-xs text-accent dark:text-dark-muted mt-1">
+            The system will automatically find and analyze the home, about, services, and contact pages.
+          </p>
+        </div>
+
+        {/* Additional Text */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">
+            Additional Context
+          </label>
+          <textarea
+            value={additionalText}
+            onChange={(e) => setAdditionalText(e.target.value)}
+            placeholder="Enter any additional information about the company, specific concerns, or context that would help with the underwriting analysis..."
+            rows={4}
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+            disabled={isGenerating}
+          />
+        </div>
+
+        {/* Document Upload */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">
+            Supporting Documents
+          </label>
+          <FileUploader
+            onFilesUploaded={handleFilesUploaded}
+            disabled={isGenerating}
+            maxFiles={5}
+            acceptedTypes={['.pdf', '.doc', '.docx', '.txt']}
+          />
+          
+          {/* Uploaded Documents List */}
+          {uploadedDocuments.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-secondary dark:text-dark-text">Uploaded Documents:</p>
+              {uploadedDocuments.map((doc, index) => (
+                <div key={index} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border">
+                  <div className="flex items-center gap-2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-blue-500">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    <span className="text-sm text-secondary dark:text-dark-text">{doc.name}</span>
+                    <span className="text-xs text-accent dark:text-dark-muted">
+                      ({(doc.size / 1024).toFixed(1)} KB)
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => removeDocument(index)}
+                    className="text-red-500 hover:text-red-700 p-1"
+                    disabled={isGenerating}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                    </svg>
+                  </button>
                 </div>
-                <div className="text-sm text-accent dark:text-dark-muted">Click to view</div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-accent dark:text-dark-muted mb-4">No saved reports</div>
-        )}
-        {reportToView && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-dark-surface rounded-lg max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="flex justify-between items-center p-4 border-b">
-                <h3 className="text-lg font-bold text-secondary dark:text-dark-text">Saved Report</h3>
-                <button onClick={() => setReportToView(null)} className="text-secondary dark:text-white hover:text-accent px-2 py-1 rounded">
-                  Close
-                </button>
-              </div>
-              <div className="p-4">
-                <div className="text-sm leading-relaxed text-secondary bg-white p-2 rounded">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {reportToView.content}
-                  </ReactMarkdown>
-                </div>
-              </div>
+              ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
+        {/* Generate Button */}
+        <button
+          onClick={generateResearch}
+          disabled={isGenerating || !url.trim()}
+          className="w-full bg-primary hover:bg-blue-600 disabled:bg-gray-400 text-white py-3 px-4 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+        >
+          {isGenerating ? (
+            <>
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+              Generating Research Report...
+            </>
+          ) : (
+            <>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z" />
+              </svg>
+              Generate Underwriting Research
+            </>
+          )}
+        </button>
       </div>
 
-      {/* Stats Cards */}
-      {stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-2xl font-bold text-primary">{stats!.totalMessages}</div>
-            <div className="text-sm text-accent dark:text-dark-muted">Total Messages</div>
-          </div>
-          <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-2xl font-bold text-green-600">{stats!.userMessages}</div>
-            <div className="text-sm text-accent dark:text-dark-muted">Your Messages</div>
-          </div>
-          <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-2xl font-bold text-blue-600">{stats!.aiMessages}</div>
-            <div className="text-sm text-accent dark:text-dark-muted">AI Responses</div>
-          </div>
-          <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border">
-            <div className="text-sm font-medium text-secondary dark:text-dark-text">
-              {stats!.lastActivity ? formatTimestamp(stats!.lastActivity) : 'No activity'}
-            </div>
-            <div className="text-sm text-accent dark:text-dark-muted">Last Activity</div>
-          </div>
-        </div>
-      ) : null}
-
-      {/* Controls */}
-      <div className="bg-white dark:bg-dark-surface rounded-lg p-4 border border-gray-200 dark:border-dark-border mb-6">
-        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="flex flex-col md:flex-row gap-4 flex-1">
-            <input
-              type="text"
-              placeholder="Search messages..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="px-3 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-dark-bg text-secondary dark:text-dark-text"
-            />
-            <select
-              value={filterSender}
-              onChange={(e) => setFilterSender(e.target.value as 'all' | 'user' | 'ai')}
-              className="px-3 py-2 border border-gray-300 dark:border-dark-border rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent bg-white dark:bg-dark-bg text-secondary dark:text-dark-text"
-            >
-              <option value="all">All Messages</option>
-              <option value="user">Your Messages</option>
-              <option value="ai">AI Responses</option>
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={exportChatHistory}
-              disabled={messages.length === 0}
-              className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
-            >
-              Export
-            </button>
-            <button
-              onClick={clearChatHistory}
-              disabled={messages.length === 0}
-              className="px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white rounded-lg font-medium transition-colors"
-            >
-              Clear All
-            </button>
-          </div>
-        </div>
-      </div>
-
+      {/* Error Display */}
       {error && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-          {error}
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
+              <path d="M12,2L13.09,8.26L22,9L13.09,9.74L12,16L10.91,9.74L2,9L10.91,8.26L12,2Z" />
+            </svg>
+            <span className="text-red-700 dark:text-red-400 font-medium">Error</span>
+          </div>
+          <p className="text-red-700 dark:text-red-400 mt-1">{error}</p>
         </div>
       )}
 
-      {/* Messages */}
-      <div className="bg-white dark:bg-dark-surface rounded-lg border border-gray-200 dark:border-dark-border flex-1">
-        {sessions.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="text-accent dark:text-dark-muted mb-2">
-              {sessions.length === 0 ? 'No chat history yet' : 'No messages match your search'}
+      {/* Research Report Display */}
+      {report && (
+        <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg overflow-hidden dark:text-white">
+          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-secondary dark:text-dark-text">
+                Research Report
+              </h2>
+              <p className="text-sm text-accent dark:text-dark-muted">
+                Analyzed {report.metadata.pagesAnalyzed} pages • {report.metadata.documentCount} documents
+              </p>
             </div>
-            <p className="text-sm text-accent dark:text-dark-muted">
-              {sessions.length === 0 
-                ? 'Start a conversation on the Home page to see your chat history here.'
-                : 'Try adjusting your search terms or filters.'
-              }
-            </p>
+            <button
+              onClick={exportToPDF}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+              </svg>
+              Export PDF
+            </button>
           </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {sessions.map(session => (
-              <div key={session.sessionId} className="border rounded-lg">
-                <button
-                  className="w-full text-left px-4 py-2 bg-gray-100 dark:bg-dark-border text-secondary dark:text-white"
-                  onClick={() => setExpandedSessionId(
-                    expandedSessionId === session.sessionId ? null : session.sessionId
-                  )}
-                >
-                  Chat started {formatTimestamp(session.messages[0].timestamp)}
-                </button>
-                {expandedSessionId === session.sessionId && (
-                  <div className="px-4 py-2">
-                    <div className="flex justify-end mb-2">
-                      <button
-                        onClick={() => resumeSession(session)}
-                        className="px-3 py-1 bg-blue-600 text-white rounded"
-                      >
-                        Continue Chat
-                      </button>
-                    </div>
-                    {session.messages.map(message => (
-                      <div key={message.id} className="p-4">
-                        <div className="flex items-start gap-3">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium ${
-                            message.sender === 'user' ? 'bg-green-600' : 'bg-primary'
-                          }`}>
-                            {message.sender === 'user' ? (user?.firstName?.[0] || 'U') : 'AI'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="font-medium text-secondary dark:text-dark-text">
-                                {message.sender === 'user' ? `${user?.firstName} ${user?.lastName}` : 'RiskNinja AI'}
-                              </span>
-                              <span className="text-xs text-accent dark:text-dark-muted">
-                                {formatTimestamp(message.timestamp)}
-                              </span>
-                            </div>
-                            <div className="text-secondary dark:text-dark-text whitespace-pre-wrap">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                {message.content}
-                              </ReactMarkdown>
-                            </div>
-                            {message.context && (
-                              <div className="mt-2 text-xs text-accent dark:text-dark-muted">
-                                {message.context.policyType && (
-                                  <span className="inline-block bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded mr-2">
-                                    Policy: {message.context.policyType}
-                                  </span>
-                                )}
-                                {message.context.documentCount && (
-                                  <span className="inline-block bg-gray-100 dark:bg-dark-bg px-2 py-1 rounded">
-                                    {message.context.documentCount} document(s)
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
+          
+          <div className="p-6 max-h-[70vh] overflow-y-auto">
+            <div ref={reportRef} className="prose prose-sm max-w-none dark:prose-invert dark:text-white markdown-content">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight, rehypeKatex]}
+                className="overflow-x-auto"
+              >
+                {report.report}
+              </ReactMarkdown>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
 
-export default ChatHistory; 
+export default Research; 

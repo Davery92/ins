@@ -467,6 +467,54 @@ ComparisonReportModel.init({
   timestamps: true,
 });
 
+// Underwriting Report Model
+export class UnderwritingReportModel extends Model {
+  public id!: string;
+  public userId!: string;
+  public customerId!: string;
+  public title!: string;
+  public content!: string;
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
+}
+
+UnderwritingReportModel.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: UserModel,
+      key: 'id',
+    },
+  },
+  customerId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: CustomerModel,
+      key: 'id',
+    },
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  content: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: 'UnderwritingReport',
+  tableName: 'underwriting_reports',
+  timestamps: true,
+});
+
 // Establish associations
 CompanyModel.hasMany(UserModel, {
   foreignKey: 'companyId',
@@ -561,6 +609,24 @@ UserModel.hasMany(ComparisonReportModel, {
 ComparisonReportModel.belongsTo(UserModel, {
   foreignKey: 'userId',
   as: 'user'
+});
+
+// Underwriting report associations
+UserModel.hasMany(UnderwritingReportModel, {
+  foreignKey: 'userId',
+  as: 'underwritingReports'
+});
+UnderwritingReportModel.belongsTo(UserModel, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+CustomerModel.hasMany(UnderwritingReportModel, {
+  foreignKey: 'customerId',
+  as: 'underwritingReports'
+});
+UnderwritingReportModel.belongsTo(CustomerModel, {
+  foreignKey: 'customerId',
+  as: 'customer'
 });
 
 // Initialize database

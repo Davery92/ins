@@ -1434,19 +1434,29 @@ Please provide a detailed and helpful response based on both the comparison repo
                       {selectedCustomer.type}
                     </span>
                   </div>
-                  
-                  {/* Convert to Customer Button - only show for prospects */}
-                  {selectedCustomer.type === 'prospect' && (
+
+                  <div className="flex items-center gap-2">
+                    {/* Prospect conversion button */}
+                    {selectedCustomer.type === 'prospect' && (
+                      <button
+                        onClick={() => handleConvertToCustomer(selectedCustomer.id)}
+                        className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-full transition-colors flex items-center gap-1"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M11,16.5L18,9.5L16.59,8.09L11,13.67L7.91,10.59L6.5,12L11,16.5Z" />
+                        </svg>
+                        Convert to Customer
+                      </button>
+                    )}
+
+                    {/* Create Underwriting Report button */}
                     <button
-                      onClick={() => handleConvertToCustomer(selectedCustomer.id)}
-                      className="px-3 py-1 bg-green-500 hover:bg-green-600 text-white text-xs rounded-full transition-colors flex items-center gap-1"
+                      onClick={() => navigate('/research', { state: { customerId: selectedCustomer.id } })}
+                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs rounded-full transition-colors"
                     >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M11,16.5L18,9.5L16.59,8.09L11,13.67L7.91,10.59L6.5,12L11,16.5Z" />
-                      </svg>
-                      Convert to Customer
+                      Create Underwriting Report
                     </button>
-                  )}
+                  </div>
                 </div>
                 <p className="text-xs text-primary dark:text-blue-300 mt-1">
                   Now managing insurance documents and policies for {selectedCustomer.name}

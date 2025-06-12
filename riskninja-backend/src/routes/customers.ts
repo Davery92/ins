@@ -1,9 +1,14 @@
 import { Router, Request, Response } from 'express';
+import { getUnderwritingReports, createUnderwritingReport } from '../controllers/underwritingController';
 import { authenticateToken } from '../middleware/auth';
 import { checkLicense } from '../middleware/checkLicense';
 import { CustomerModel, ChatSessionModel, PolicyDocumentModel, ChatMessageModel } from '../models';
 
 const router = Router();
+
+// Underwriting Report routes
+router.get('/:id/underwriting-reports', authenticateToken, checkLicense, getUnderwritingReports);
+router.post('/:id/underwriting-reports', authenticateToken, checkLicense, createUnderwritingReport);
 
 // GET /api/customers - get all customers and prospects for the user
 router.get('/', authenticateToken, checkLicense, async (req: Request, res: Response) => {

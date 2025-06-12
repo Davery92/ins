@@ -7,7 +7,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Header from './components/Header';
 import Home from './pages/Home';
 import Policies from './pages/Policies';
-import ChatHistory from './pages/ChatHistory';
+import Research from './pages/ChatHistory';
 import Support from './pages/Support';
 import Admin from './pages/Admin';
 import Login from './pages/Login';
@@ -38,7 +38,7 @@ function App() {
                           <Route path="/" element={<Home />} />
                           <Route path="/policies" element={<Policies />} />
                           <Route path="/comparison" element={<Comparison />} />
-                          <Route path="/chat-history" element={<ChatHistory />} />
+                          <Route path="/research" element={<Research />} />
                           <Route path="/support" element={<Support />} />
                           <Route path="/admin" element={<Admin />} />
                           <Route path="/sysadmin" element={<SystemAdmin />} />
