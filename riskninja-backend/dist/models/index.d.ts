@@ -72,5 +72,17 @@ export declare class ChatSessionModel extends Model {
     createdAt: Date;
     updatedAt: Date;
 }
+export declare class ComparisonReportModel extends Model {
+    id: string;
+    userId: string;
+    title: string;
+    content: string;
+    documentNames: string[];
+    documentIds: string[];
+    primaryPolicyType: string;
+    additionalFacts: string | null;
+    createdAt: Date;
+    readonly updatedAt: Date;
+}
 export declare const initDatabase: () => Promise<void>;
 //# sourceMappingURL=index.d.ts.map

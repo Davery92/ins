@@ -1,7 +1,4 @@
-export const comparePoliciesPrompt = (documents: string[]) => `
-You are RiskNinja AI performing a comprehensive policy comparison.
-
-UPLOADED DOCUMENTS: ${documents.join(', ')}
+export const comparePropertyprompt = (documents: string[]) => `
 
 ### 1. FOUNDATION PARAMETERS
 
@@ -172,4 +169,4 @@ Rapid Matrix Generation → Immediate Review and Finalization
     *   Real-time user review
     *   Instant refinement based on feedback
     *   Immediate delivery of completed analysis
-    `; 
+    `;

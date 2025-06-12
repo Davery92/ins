@@ -19,6 +19,7 @@ import systemAdminRoutes from './routes/systemAdmin';
 import customersRoutes from './routes/customers';
 import chatSessionsRoutes from './routes/chatSessions';
 import comparisonRoutes from './routes/comparison';
+import comparisonReportsRoutes from './routes/comparisonReports';
 import { initializeStorage } from './services/fileStorage';
 
 const app = express();
@@ -109,6 +110,7 @@ app.use('/system-admin', systemAdminRoutes);
 app.use('/customers', customersRoutes);
 app.use('/chat-sessions', chatSessionsRoutes);
 app.use('/comparison', comparisonRoutes);
+app.use('/comparison-reports', comparisonReportsRoutes);
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error:', err.message, err.stack);

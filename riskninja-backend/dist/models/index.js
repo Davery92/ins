@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.initDatabase = exports.ChatSessionModel = exports.CustomerModel = exports.PolicyDocumentModel = exports.ChatMessageModel = exports.UserModel = exports.CompanyModel = exports.sequelize = void 0;
+exports.initDatabase = exports.ComparisonReportModel = exports.ChatSessionModel = exports.CustomerModel = exports.PolicyDocumentModel = exports.ChatMessageModel = exports.UserModel = exports.CompanyModel = exports.sequelize = void 0;
 const sequelize_1 = require("sequelize");
 // Use DATABASE_URL for PostgreSQL connection
 const databaseUrl = process.env.DATABASE_URL || 'postgres://riskninja_user:riskninja_password@localhost:5432/riskninja_db';
@@ -338,6 +338,54 @@ ChatSessionModel.init({
     tableName: 'chat_sessions',
     timestamps: true,
 });
+// Comparison Report Model
+class ComparisonReportModel extends sequelize_1.Model {
+}
+exports.ComparisonReportModel = ComparisonReportModel;
+ComparisonReportModel.init({
+    id: {
+        type: sequelize_1.DataTypes.UUID,
+        defaultValue: sequelize_1.DataTypes.UUIDV4,
+        primaryKey: true,
+    },
+    userId: {
+        type: sequelize_1.DataTypes.UUID,
+        allowNull: false,
+        references: {
+            model: UserModel,
+            key: 'id',
+        },
+    },
+    title: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: false,
+    },
+    content: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: false,
+    },
+    documentNames: {
+        type: sequelize_1.DataTypes.ARRAY(sequelize_1.DataTypes.STRING),
+        allowNull: false,
+    },
+    documentIds: {
+        type: sequelize_1.DataTypes.ARRAY(sequelize_1.DataTypes.UUID),
+        allowNull: false,
+    },
+    primaryPolicyType: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: false,
+    },
+    additionalFacts: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: true,
+    },
+}, {
+    sequelize: exports.sequelize,
+    modelName: 'ComparisonReport',
+    tableName: 'comparison_reports',
+    timestamps: true,
+});
 // Establish associations
 CompanyModel.hasMany(UserModel, {
     foreignKey: 'companyId',
@@ -404,6 +452,15 @@ UserModel.hasMany(ChatMessageModel, {
     as: 'messages'
 });
 ChatMessageModel.belongsTo(UserModel, {
+    foreignKey: 'userId',
+    as: 'user'
+});
+// Comparison report associations
+UserModel.hasMany(ComparisonReportModel, {
+    foreignKey: 'userId',
+    as: 'comparisonReports'
+});
+ComparisonReportModel.belongsTo(UserModel, {
     foreignKey: 'userId',
     as: 'user'
 });

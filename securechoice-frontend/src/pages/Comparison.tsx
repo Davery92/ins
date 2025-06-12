@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -22,6 +22,7 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
 const Comparison: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { token, user } = useAuth();
   const {
     documents,
@@ -45,6 +46,58 @@ const Comparison: React.FC = () => {
   useEffect(() => {
     setSelectedDocs(selectedDocumentIds);
   }, [selectedDocumentIds]);
+
+  // Handle loading existing report from navigation state or sessionStorage
+  useEffect(() => {
+    const state = location.state as any;
+    console.log('🔍 Comparison page navigation state:', state);
+    console.log('🔍 URL search params:', location.search);
+    
+    let reportData = null;
+    
+    // Try to get report data from navigation state first
+    if (state?.reportData?.isExistingReport) {
+      reportData = state.reportData;
+      console.log('📊 Found report data in navigation state');
+    } else {
+      // Fallback to sessionStorage
+      const storedData = sessionStorage.getItem('comparison-report-data');
+      if (storedData) {
+        try {
+          reportData = JSON.parse(storedData);
+          console.log('📊 Found report data in sessionStorage');
+          // Clear sessionStorage after use
+          sessionStorage.removeItem('comparison-report-data');
+        } catch (error) {
+          console.error('Error parsing stored report data:', error);
+        }
+      }
+    }
+    
+    if (reportData) {
+      console.log('📊 Loading existing report:', reportData.reportTitle);
+      
+      // Set up the comparison report view directly
+      setComparisonReport(reportData.report);
+      setSelectedDocs(reportData.documentIds || []);
+      setAdditionalFacts(reportData.additionalFacts || '');
+      
+      // Initialize chat with report context
+      const initialMessage: ChatMessage = {
+        id: `msg_${Date.now()}`,
+        content: `I've loaded the comparison report "${reportData.reportTitle}". This report analyzes ${reportData.documentNames?.join(', ') || 'your selected documents'}. Feel free to ask me any questions about the findings or the original documents!`,
+        sender: 'ai',
+        timestamp: new Date()
+      };
+
+      setChatHistory([initialMessage]);
+      setCurrentStep('view-report');
+      
+      console.log('✅ Report loaded, step set to view-report');
+    } else {
+      console.log('🔄 No existing report data found, staying on document-selection step');
+    }
+  }, [location.state, location.search, setChatHistory]);
 
   const handleDocumentSelection = (docId: string) => {
     setSelectedDocs(prev => 
@@ -109,13 +162,22 @@ const Comparison: React.FC = () => {
       // Get selected documents with their content
       const selectedDocuments = documents.filter(doc => selectedDocs.includes(doc.id));
       
+             // Import prompt mapping utilities
+       const { determinePrimaryPolicyType } = await import('../utils/promptMapping');
+       
+       // Determine the primary policy type from selected documents
+       const primaryPolicyType = determinePrimaryPolicyType(selectedDocuments);
+       console.log('🔍 Comparison page - Primary policy type:', primaryPolicyType);
+      
       // Create comparison report request
       const reportRequest = {
         documentIds: selectedDocs,
         additionalFacts: additionalFacts,
+        primaryPolicyType: primaryPolicyType,
         documents: selectedDocuments.map(doc => ({
           id: doc.id,
           name: doc.name,
+          policyType: doc.policyType,
           extractedText: doc.extractedText || ''
         }))
       };
@@ -140,6 +202,34 @@ const Comparison: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       setComparisonReport(result.report || 'Comparison report generated successfully.');
+      
+      // Save the comparison report automatically
+      try {
+        const reportData = {
+          title: `Comparison Report - ${new Date().toLocaleDateString()}`,
+          content: result.report || 'Comparison report generated successfully.',
+          documentNames: selectedDocuments.map(doc => doc.name),
+          documentIds: selectedDocuments.map(doc => doc.id),
+          primaryPolicyType: primaryPolicyType,
+          additionalFacts: additionalFacts
+        };
+        
+        const savedReport = await fetch(`${API_BASE_URL}/comparison-reports`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(reportData)
+        });
+        
+        if (savedReport.ok) {
+          console.log('📊 Comparison report saved successfully');
+        }
+      } catch (saveError) {
+        console.error('Failed to save comparison report:', saveError);
+        // Continue anyway - don't block the user experience
+      }
       
       // Initialize chat with report context
       const initialMessage: ChatMessage = {
@@ -173,16 +263,27 @@ const Comparison: React.FC = () => {
 
     setChatHistory(prev => [...prev, userMessage]);
 
-    // Create context with the report
+    // Get selected documents for context
+    const selectedDocuments = documents.filter(doc => selectedDocs.includes(doc.id));
+    
+    // Create comprehensive context with both the report AND the original documents
+    const documentTexts = selectedDocuments.map((doc, index) =>
+      `DOCUMENT ${index + 1}: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})
+${doc.extractedText || 'Unable to extract text from this document.'}`
+    ).join('\n\n---\n\n');
+
     const contextualPrompt = `
-Based on the following comparison report and user question, provide a helpful response:
+Based on the following comparison report, original documents, and user question, provide a helpful response:
 
 COMPARISON REPORT:
 ${comparisonReport}
 
+ORIGINAL DOCUMENTS:
+${documentTexts}
+
 USER QUESTION: ${message}
 
-Please provide a detailed and helpful response based on the report content.
+Please provide a detailed and helpful response based on both the comparison report and the original document content. You can reference specific details from either the report or the original documents as needed.
 `;
 
     try {
@@ -738,7 +839,7 @@ Please provide a detailed and helpful response based on the report content.
                 <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-gray-900">
                   <div className="max-w-4xl mx-auto bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
                     <div className="text-base leading-relaxed text-secondary dark:text-dark-text">
-                      <div ref={reportContentRef} className="overflow-x-auto markdown-content">
+                      <div ref={reportContentRef} className="overflow-x-scroll markdown-content" style={{ overflowX: 'scroll' }}>
                         <ReactMarkdown 
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeHighlight, rehypeKatex]}

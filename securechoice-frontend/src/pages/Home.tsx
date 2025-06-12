@@ -8,7 +8,7 @@ import OnboardingTour from '../components/OnboardingTour';
 import { useDocuments } from '../contexts/DocumentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { aiService } from '../services/aiService';
-import { documentAnalysisPrompt, comparePoliciesPrompt } from '../prompts';
+// Policy-specific prompts are now imported dynamically in functions
 import { defaultPolicyPrompts } from '../prompts/policyPrompts';
 import { chatContextService, ChatContext } from '../services/chatContextService';
 
@@ -27,6 +27,19 @@ interface Customer {
   status: 'active' | 'inactive' | 'lead';
 }
 
+// Comparison Report interface
+interface ComparisonReport {
+  id: string;
+  title: string;
+  content: string;
+  documentNames: string[];
+  documentIds: string[];
+  primaryPolicyType: string;
+  additionalFacts?: string;
+  createdAt: Date;
+  createdBy: string;
+}
+
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -34,11 +47,13 @@ const Home: React.FC = () => {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showDocumentsModal, setShowDocumentsModal] = useState(false);
   
-  // Customer/Prospect state
-  const [selectedView, setSelectedView] = useState<'customers' | 'prospects'>('customers');
+  // Customer/Prospect/Reports state
+  const [selectedView, setSelectedView] = useState<'customers' | 'prospects' | 'reports'>('customers');
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [prospects, setProspects] = useState<Customer[]>([]);
+  const [comparisonReports, setComparisonReports] = useState<ComparisonReport[]>([]);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [selectedReport, setSelectedReport] = useState<ComparisonReport | null>(null);
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [newCustomerType, setNewCustomerType] = useState<'customer' | 'prospect'>('customer');
   
@@ -78,7 +93,7 @@ const Home: React.FC = () => {
     currentChatSessionId
   } = useDocuments();
 
-  // API functions for customer data
+  // API functions for customer data and reports
   const fetchCustomers = useCallback(async () => {
     try {
       setLoadingCustomers(true);
@@ -106,12 +121,57 @@ const Home: React.FC = () => {
     }
   }, [token]);
 
-  // Load customers on component mount
+  const fetchComparisonReports = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/comparison-reports`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const reports = await response.json();
+        setComparisonReports(reports);
+      } else {
+        console.error('Failed to fetch comparison reports:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error fetching comparison reports:', error);
+    }
+  }, [token]);
+
+  // Function to save a new comparison report
+  const saveComparisonReport = async (reportData: Omit<ComparisonReport, 'id' | 'createdAt' | 'createdBy'>) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/comparison-reports`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(reportData)
+      });
+      
+      if (response.ok) {
+        const newReport = await response.json();
+        setComparisonReports(prev => [...prev, newReport]);
+        console.log('📊 Comparison report saved successfully:', newReport.title);
+        return newReport;
+      } else {
+        console.error('Failed to save comparison report:', await response.text());
+      }
+    } catch (error) {
+      console.error('Error saving comparison report:', error);
+    }
+    return null;
+  };
+
+  // Load customers and reports on component mount
   useEffect(() => {
     if (token) {
       fetchCustomers();
+      fetchComparisonReports();
     }
-  }, [token, fetchCustomers]);
+  }, [token, fetchCustomers, fetchComparisonReports]);
 
   // Check if user is new (no previous activity)
   useEffect(() => {
@@ -214,6 +274,7 @@ const Home: React.FC = () => {
   const handleSelectCustomer = async (customer: Customer) => {
     console.log('👤 Selecting customer:', customer.name, customer.id);
     setSelectedCustomer(customer);
+    setSelectedReport(null); // Clear any selected report
     // Set current customer in DocumentContext to enable chat session association
     setCurrentCustomer(customer.id);
     // Clear previous documents when switching customers
@@ -238,6 +299,61 @@ const Home: React.FC = () => {
     } finally {
       setLoadingCustomerData(false);
     }
+  };
+
+  const handleSelectReport = async (report: ComparisonReport) => {
+    console.log('📊 Opening comparison report:', report.title, report.id);
+    
+    // Store report data in sessionStorage as backup
+    sessionStorage.setItem('comparison-report-data', JSON.stringify({
+      report: report.content,
+      reportTitle: report.title,
+      documentIds: report.documentIds,
+      documentNames: report.documentNames,
+      primaryPolicyType: report.primaryPolicyType,
+      additionalFacts: report.additionalFacts,
+      isExistingReport: true
+    }));
+    
+    // Navigate to comparison page with both state and URL param
+    navigate(`/compare?reportId=${report.id}`, {
+      state: {
+        reportData: {
+          report: report.content,
+          reportTitle: report.title,
+          documentIds: report.documentIds,
+          documentNames: report.documentNames,
+          primaryPolicyType: report.primaryPolicyType,
+          additionalFacts: report.additionalFacts,
+          isExistingReport: true
+        }
+      }
+    });
+  };
+
+  const handleSelectReportForChat = async (report: ComparisonReport) => {
+    console.log('💬 Selecting comparison report for chat:', report.title, report.id);
+    setSelectedReport(report);
+    setSelectedCustomer(null); // Clear any selected customer
+    setCurrentCustomer(null);
+    
+    // Set documents from the report
+    setSelectedDocumentIds(report.documentIds);
+    
+    // Set chat title and initialize with report context
+    setChatTitle(report.title);
+    setIsEditingTitle(false);
+    
+    // Initialize chat with report context
+    const initialMessage: ChatMessage = {
+      id: `msg_${Date.now()}`,
+      content: `I've loaded the comparison report "${report.title}". This report analyzes ${report.documentNames.join(', ')}. Feel free to ask me any questions about the findings or the original documents!`,
+      sender: 'ai',
+      timestamp: new Date()
+    };
+    
+    setChatHistory([initialMessage]);
+    startNewSession();
   };
 
   const handleConvertToCustomer = async (prospectId: string) => {
@@ -279,8 +395,8 @@ const Home: React.FC = () => {
     }
   };
 
-  const getCurrentList = () => {
-    return selectedView === 'customers' ? customers : prospects;
+  const getCurrentList = (): (Customer | ComparisonReport)[] => {
+    return selectedView === 'customers' ? customers : selectedView === 'prospects' ? prospects : comparisonReports;
   };
 
   const policyTypes = [
@@ -386,7 +502,109 @@ const Home: React.FC = () => {
 
   const generateMessageId = () => `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
+  // Handle chat messages when a comparison report is selected
+  const handleReportChatMessage = async (message: string) => {
+    if (!selectedReport) return;
+
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: generateMessageId(),
+      content: message,
+      sender: 'user',
+      timestamp: new Date()
+    };
+    
+    setChatHistory(prev => [...prev, userMessage]);
+
+    // Get selected documents for context
+    const reportDocuments = documents.filter(doc => selectedReport.documentIds.includes(doc.id));
+    
+    // Create comprehensive context with both the report AND the original documents
+    const documentTexts = reportDocuments.map((doc, index) =>
+      `DOCUMENT ${index + 1}: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})
+${doc.extractedText || 'Unable to extract text from this document.'}`
+    ).join('\n\n---\n\n');
+
+    const contextualPrompt = `
+Based on the following comparison report, original documents, and user question, provide a helpful response:
+
+COMPARISON REPORT: "${selectedReport.title}"
+${selectedReport.content}
+
+ORIGINAL DOCUMENTS:
+${documentTexts}
+
+USER QUESTION: ${message}
+
+Please provide a detailed and helpful response based on both the comparison report and the original document content. You can reference specific details from either the report or the original documents as needed.
+`;
+
+    // Create AI message with streaming
+    const aiMessageId = generateMessageId();
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      content: '',
+      sender: 'ai',
+      timestamp: new Date(),
+      isStreaming: true
+    };
+    
+    setChatHistory(prev => [...prev, aiMessage]);
+
+    try {
+      let finalAiContent = '';
+      await aiService.sendRawPrompt(contextualPrompt, (streamContent) => {
+        finalAiContent = streamContent;
+        setChatHistory(prev =>
+          prev.map(msg =>
+            msg.id === aiMessageId ? { ...msg, content: streamContent } : msg
+          )
+        );
+      });
+
+      // Mark streaming as complete
+      const finalAiMessage: ChatMessage = {
+        id: aiMessageId,
+        content: finalAiContent,
+        sender: 'ai',
+        timestamp: new Date(),
+        isStreaming: false
+      };
+
+      setChatHistory(prev => 
+        prev.map(msg => 
+          msg.id === aiMessageId 
+            ? finalAiMessage
+            : msg
+        )
+      );
+
+    } catch (error) {
+      console.error('Report chat error:', error);
+      const errorMessage: ChatMessage = {
+        id: aiMessageId,
+        content: 'Sorry, I encountered an error. Please try again.',
+        sender: 'ai',
+        timestamp: new Date(),
+        isStreaming: false
+      };
+
+      setChatHistory(prev => 
+        prev.map(msg => 
+          msg.id === aiMessageId 
+            ? errorMessage
+            : msg
+        )
+      );
+    }
+  };
+
   const handleSendMessage = async (message: string) => {
+    // If a comparison report is selected, use report-specific context
+    if (selectedReport) {
+      return handleReportChatMessage(message);
+    }
+    
     // Build current context for validation
     const currentContext: ChatContext = {
       messages: chatHistory,
@@ -517,17 +735,25 @@ const Home: React.FC = () => {
     }
   };
 
-  // Handler for Risk Assessment using documentAnalysisPrompt and sendRawPrompt
+  // Handler for Risk Assessment using policy-specific prompts
   const handleRiskAssessment = async () => {
     console.log('⚙️ handleRiskAssessment invoked. Selected Documents:', selectedDocuments);
     if (!selectedCustomer || selectedDocuments.length === 0) return;
     setIsLoading(true);
     for (const doc of selectedDocuments) {
-      console.log('⚙️ Preparing analysis for document:', doc.name, 'extractedText length:', doc.extractedText?.length);
-      const systemPrompt = documentAnalysisPrompt(doc.name);
+      console.log('⚙️ Preparing analysis for document:', doc.name, 'policyType:', doc.policyType, 'extractedText length:', doc.extractedText?.length);
+      
+      // Import the prompt mapping utilities
+      const { getAnalysisPrompt } = await import('../utils/promptMapping');
+      
+      // Get the appropriate prompt based on the document's policy type
+      const policyType = doc.policyType || 'general-liability';
+      const promptFunction = getAnalysisPrompt(policyType);
+      const systemPrompt = promptFunction([doc.name]);
+      
       const documentText = `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`;
       const fullPrompt = `${systemPrompt}\n\n${documentText}`;
-      console.log('⚙️ Full risk assessment prompt:', fullPrompt);
+      console.log('⚙️ Full risk assessment prompt using', policyType, 'template:', fullPrompt);
       // Notify user of analysis action with title
       const titleMsg: ChatMessage = {
         id: generateMessageId(),
@@ -564,17 +790,28 @@ const Home: React.FC = () => {
     setIsLoading(false);
   };
 
-  // Handler for Compare & Optimize that includes document summaries as context
+  // Handler for Compare & Optimize that uses policy-specific comparison prompts
   const handleComparePolicies = async () => {
     if (!selectedCustomer || selectedDocuments.length < 2) return;
     setIsLoading(true);
+    
+    // Import the prompt mapping utilities
+    const { getComparisonPrompt, determinePrimaryPolicyType } = await import('../utils/promptMapping');
+    
+    // Determine the primary policy type from selected documents
+    const primaryPolicyType = determinePrimaryPolicyType(selectedDocuments);
+    console.log('🔍 Primary policy type for comparison:', primaryPolicyType, 'from documents:', selectedDocuments.map(d => ({ name: d.name, policyType: d.policyType })));
+    
     // Build document text context from extracted PDF text
     const documentTexts = selectedDocuments.map((doc) =>
-      `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`
+      `Document: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})\n${doc.extractedText || 'Unable to extract text from this document.'}`
     );
-    // Build system prompt from comparePoliciesPrompt
-    const systemPrompt = comparePoliciesPrompt(selectedDocuments.map(d => d.name));
+    
+    // Get the appropriate comparison prompt based on the primary policy type
+    const comparisonPromptFunction = getComparisonPrompt(primaryPolicyType);
+    const systemPrompt = comparisonPromptFunction(selectedDocuments.map(d => d.name));
     const fullPrompt = `${systemPrompt}\n\n${documentTexts.join('\n\n')}`;
+    
     // Notify user of comparison action with title
     const docNames = selectedDocuments.map(doc => doc.name).join(', ');
     const titleMsg: ChatMessage = {
@@ -900,38 +1137,79 @@ const Home: React.FC = () => {
         {/* Documents Selection Modal */}
         {showDocumentsModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-            <div className="bg-white dark:bg-dark-surface text-black dark:text-white rounded-lg p-6 max-w-md w-full">
-              <h3 className="text-lg font-bold mb-4">Select Documents</h3>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {documents.map(doc => (
-                  <label key={doc.id} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedDocumentIds.includes(doc.id)}
-                      onChange={() => toggleDocumentSelection(doc.id)}
-                      className="form-checkbox h-4 w-4"
-                    />
-                    <span className="truncate">{doc.name}</span>
-                  </label>
-                ))}
+            <div className="bg-white dark:bg-dark-surface text-black dark:text-white rounded-lg p-6 max-w-2xl w-full">
+              <h3 className="text-lg font-bold mb-4">Select Documents & Reports</h3>
+              
+              {/* Documents Section */}
+              <div className="mb-6">
+                <h4 className="text-md font-semibold mb-3 text-blue-600 dark:text-blue-400">Policy Documents</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {documents.length > 0 ? documents.map(doc => (
+                    <label key={doc.id} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedDocumentIds.includes(doc.id)}
+                        onChange={() => toggleDocumentSelection(doc.id)}
+                        className="form-checkbox h-4 w-4 text-blue-600"
+                      />
+                      <span className="truncate text-sm">{doc.name}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">({doc.policyType || 'Unknown'})</span>
+                    </label>
+                  )) : (
+                    <p className="text-gray-500 dark:text-gray-400 text-sm italic">No documents available</p>
+                  )}
+                </div>
               </div>
-              <div className="mt-4 flex justify-between items-center">
+
+              {/* Reports Section */}
+              <div className="mb-4">
+                <h4 className="text-md font-semibold mb-3 text-purple-600 dark:text-purple-400">Comparison Reports</h4>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {comparisonReports.length > 0 ? comparisonReports.map(report => (
+                    <label key={`report-${report.id}`} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedReport?.id === report.id}
+                        onChange={() => {
+                          if (selectedReport?.id === report.id) {
+                            setSelectedReport(null);
+                            setSelectedDocumentIds([]);
+                          } else {
+                            handleSelectReportForChat(report);
+                          }
+                        }}
+                        className="form-checkbox h-4 w-4 text-purple-600"
+                      />
+                      <span className="truncate text-sm">{report.title}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">({report.primaryPolicyType})</span>
+                    </label>
+                  )) : (
+                    <p className="text-gray-500 dark:text-gray-400 text-sm italic">No reports available</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-6 flex justify-between items-center">
                 <button
-                  onClick={() => { setSelectedDocumentIds([]); setShowDocumentsModal(false); }}
-                  className="px-4 py-2 bg-red-500 text-white rounded"
+                  onClick={() => { 
+                    setSelectedDocumentIds([]); 
+                    setSelectedReport(null);
+                    setShowDocumentsModal(false); 
+                  }}
+                  className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
                 >
                   Clear All
                 </button>
                 <div className="flex space-x-2">
                   <button
                     onClick={() => setShowDocumentsModal(false)}
-                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded"
+                    className="px-4 py-2 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={() => setShowDocumentsModal(false)}
-                    className="px-4 py-2 bg-primary text-white rounded"
+                    className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-600 transition-colors"
                   >
                     OK
                   </button>
@@ -967,18 +1245,34 @@ const Home: React.FC = () => {
                 >
                   Prospects
                 </button>
+                <button
+                  onClick={() => setSelectedView('reports')}
+                  className={`px-6 py-3 font-medium transition-all ${
+                    selectedView === 'reports'
+                      ? 'text-primary border-b-2 border-primary bg-blue-50 dark:bg-blue-900/20'
+                      : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
+                  }`}
+                >
+                  Reports
+                </button>
               </div>
               
-              {/* New Button with Dropdown */}
+              {/* New Button */}
               <div className="relative">
                 <button
-                  onClick={() => setShowNewCustomerModal(true)}
+                  onClick={() => {
+                    if (selectedView === 'reports') {
+                      navigate('/compare');
+                    } else {
+                      setShowNewCustomerModal(true);
+                    }
+                  }}
                   className="bg-primary hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
                   </svg>
-                  New
+                  New {selectedView === 'reports' ? 'Report' : selectedView === 'customers' ? 'Customer' : 'Prospect'}
                 </button>
               </div>
             </div>
@@ -986,10 +1280,10 @@ const Home: React.FC = () => {
             {/* Current List Display */}
             <div className="mb-4">
               <h3 className="text-lg font-bold text-secondary dark:text-dark-text mb-3">
-                {selectedView === 'customers' ? 'Your Customers' : 'Your Prospects'}
+                {selectedView === 'customers' ? 'Your Customers' : selectedView === 'prospects' ? 'Your Prospects' : 'Your Reports'}
               </h3>
               <p className="text-accent dark:text-dark-muted text-sm mb-4">
-                Select a {selectedView === 'customers' ? 'customer' : 'prospect'} to manage their insurance documents and policies
+                Select a {selectedView === 'customers' ? 'customer' : selectedView === 'prospects' ? 'prospect' : 'report'} to manage their insurance documents and policies
               </p>
             </div>
 
@@ -1001,64 +1295,72 @@ const Home: React.FC = () => {
                   <div key={i} className="h-32 bg-gray-200 dark:bg-gray-700 animate-pulse rounded-lg"></div>
                 ))
               ) : getCurrentList().length > 0 ? (
-                getCurrentList().map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => handleSelectCustomer(item)}
-                    className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
-                      selectedCustomer?.id === item.id
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md'
-                        : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface hover:border-gray-300 dark:hover:border-gray-600'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className={`font-medium text-sm ${
-                          selectedCustomer?.id === item.id 
-                            ? 'text-blue-700 dark:text-blue-200' 
-                            : 'text-gray-900 dark:text-gray-100'
+                getCurrentList().map((item) => {
+                  // Check if item is a ComparisonReport or Customer
+                  const isReport = 'content' in item;
+                  const isSelected = isReport ? selectedReport?.id === item.id : selectedCustomer?.id === item.id;
+                  
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => isReport ? handleSelectReport(item as ComparisonReport) : handleSelectCustomer(item as Customer)}
+                      className={`p-4 rounded-lg border cursor-pointer transition-all hover:shadow-md ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 shadow-md'
+                          : 'border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface hover:border-gray-300 dark:hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className={`font-medium text-sm ${
+                            isSelected 
+                              ? 'text-blue-700 dark:text-blue-200' 
+                              : 'text-gray-900 dark:text-gray-100'
+                          }`}>
+                            {isReport ? (item as ComparisonReport).title : (item as Customer).name}
+                          </div>
+                        </div>
+                        <div className={`text-xs px-2 py-1 rounded-full ${
+                          isReport
+                            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300'
+                            : (item as Customer).status === 'active' 
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' 
+                            : (item as Customer).status === 'lead'
+                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                            : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300'
                         }`}>
-                          {item.name}
+                          {isReport ? (item as ComparisonReport).primaryPolicyType : (item as Customer).status}
                         </div>
                       </div>
-                      <div className={`text-xs px-2 py-1 rounded-full ${
-                        item.status === 'active' 
-                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' 
-                          : item.status === 'lead'
-                          ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-                          : 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-300'
+                      
+                      <div className={`text-xs mt-2 ${
+                        isSelected 
+                          ? 'text-blue-600 dark:text-blue-300' 
+                          : 'text-gray-600 dark:text-gray-400'
                       }`}>
-                        {item.status}
+                        {isReport ? (item as ComparisonReport).documentNames.join(', ') : (item as Customer).company}
                       </div>
-                    </div>
-                    
-                    <div className={`text-xs mt-2 ${
-                      selectedCustomer?.id === item.id 
-                        ? 'text-blue-600 dark:text-blue-300' 
-                        : 'text-gray-600 dark:text-gray-400'
-                    }`}>
-                      {item.company}
-                    </div>
-                    
-                    {item.email && (
-                      <div className={`text-xs mt-1 ${
-                        selectedCustomer?.id === item.id 
+                      
+                      {!isReport && (item as Customer).email && (
+                        <div className={`text-xs mt-1 ${
+                          isSelected 
+                            ? 'text-blue-500 dark:text-blue-400' 
+                            : 'text-gray-500 dark:text-gray-500'
+                        }`}>
+                          {(item as Customer).email}
+                        </div>
+                      )}
+                      
+                      <div className={`text-xs mt-2 ${
+                        isSelected 
                           ? 'text-blue-500 dark:text-blue-400' 
                           : 'text-gray-500 dark:text-gray-500'
                       }`}>
-                        {item.email}
+                        Created: {new Date(item.createdAt).toLocaleDateString()}
                       </div>
-                    )}
-                    
-                    <div className={`text-xs mt-2 ${
-                      selectedCustomer?.id === item.id 
-                        ? 'text-blue-500 dark:text-blue-400' 
-                        : 'text-gray-500 dark:text-gray-500'
-                    }`}>
-                      Created: {new Date(item.createdAt).toLocaleDateString()}
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 // Empty state
                 <div className="col-span-full text-center py-12">
@@ -1071,20 +1373,47 @@ const Home: React.FC = () => {
                     No {selectedView} yet
                   </h3>
                   <p className="text-gray-500 dark:text-gray-400 mb-4">
-                    Get started by adding your first {selectedView === 'customers' ? 'customer' : 'prospect'}
+                    Get started by adding your first {selectedView === 'customers' ? 'customer' : selectedView === 'prospects' ? 'prospect' : 'report'}
                   </p>
                   <button
                     onClick={() => {
-                      setNewCustomerType(selectedView === 'customers' ? 'customer' : 'prospect');
-                      setShowNewCustomerModal(true);
+                      if (selectedView === 'reports') {
+                        // For reports view, navigate to comparison page to create new report
+                        navigate('/compare');
+                      } else {
+                        setNewCustomerType(selectedView === 'customers' ? 'customer' : 'prospect');
+                        setShowNewCustomerModal(true);
+                      }
                     }}
                     className="px-4 py-2 bg-primary text-white rounded hover:bg-blue-600 transition-colors"
                   >
-                    Add {selectedView === 'customers' ? 'Customer' : 'Prospect'}
+                    Add {selectedView === 'customers' ? 'Customer' : selectedView === 'prospects' ? 'Prospect' : 'Report'}
                   </button>
                 </div>
               )}
             </div>
+            
+            {/* Selected Report Info */}
+            {selectedReport && (
+              <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-purple-600 dark:text-purple-300">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
+                    <span className="text-sm font-medium">
+                      Selected: {selectedReport.title}
+                    </span>
+                    <span className="text-xs px-2 py-1 rounded-full ml-2 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                      {selectedReport.primaryPolicyType}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-purple-600 dark:text-purple-300 mt-1">
+                  Documents: {selectedReport.documentNames.join(', ')}
+                </p>
+              </div>
+            )}
             
             {/* Selected Customer Info */}
             {selectedCustomer && (

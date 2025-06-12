@@ -408,6 +408,65 @@ ChatSessionModel.init({
   timestamps: true,
 });
 
+// Comparison Report Model
+export class ComparisonReportModel extends Model {
+  public id!: string;
+  public userId!: string;
+  public title!: string;
+  public content!: string;
+  public documentNames!: string[];
+  public documentIds!: string[];
+  public primaryPolicyType!: string;
+  public additionalFacts!: string | null;
+  public createdAt!: Date;
+  public readonly updatedAt!: Date;
+}
+
+ComparisonReportModel.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  userId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: {
+      model: UserModel,
+      key: 'id',
+    },
+  },
+  title: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  content: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
+  documentNames: {
+    type: DataTypes.ARRAY(DataTypes.STRING),
+    allowNull: false,
+  },
+  documentIds: {
+    type: DataTypes.ARRAY(DataTypes.UUID),
+    allowNull: false,
+  },
+  primaryPolicyType: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+  additionalFacts: {
+    type: DataTypes.TEXT,
+    allowNull: true,
+  },
+}, {
+  sequelize,
+  modelName: 'ComparisonReport',
+  tableName: 'comparison_reports',
+  timestamps: true,
+});
+
 // Establish associations
 CompanyModel.hasMany(UserModel, {
   foreignKey: 'companyId',
@@ -489,6 +548,17 @@ UserModel.hasMany(ChatMessageModel, {
 });
 
 ChatMessageModel.belongsTo(UserModel, {
+  foreignKey: 'userId',
+  as: 'user'
+});
+
+// Comparison report associations
+UserModel.hasMany(ComparisonReportModel, {
+  foreignKey: 'userId',
+  as: 'comparisonReports'
+});
+
+ComparisonReportModel.belongsTo(UserModel, {
   foreignKey: 'userId',
   as: 'user'
 });
