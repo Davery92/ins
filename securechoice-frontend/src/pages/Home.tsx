@@ -303,9 +303,9 @@ const Home: React.FC = () => {
 
   const handleSelectReport = async (report: ComparisonReport) => {
     console.log('📊 Opening comparison report:', report.title, report.id);
+    console.log('📊 Full report object:', JSON.stringify(report, null, 2));
     
-    // Store report data in sessionStorage as backup
-    sessionStorage.setItem('comparison-report-data', JSON.stringify({
+    const reportDataPayload = {
       report: report.content,
       reportTitle: report.title,
       documentIds: report.documentIds,
@@ -313,22 +313,22 @@ const Home: React.FC = () => {
       primaryPolicyType: report.primaryPolicyType,
       additionalFacts: report.additionalFacts,
       isExistingReport: true
-    }));
+    };
+    
+    console.log('📊 Report data payload:', JSON.stringify(reportDataPayload, null, 2));
+    
+    // Store report data in sessionStorage as backup
+    sessionStorage.setItem('comparison-report-data', JSON.stringify(reportDataPayload));
+    console.log('💾 Stored in sessionStorage');
     
     // Navigate to comparison page with both state and URL param
-    navigate(`/compare?reportId=${report.id}`, {
+    console.log('🚀 Navigating to /comparison');
+    navigate(`/comparison?reportId=${report.id}`, {
       state: {
-        reportData: {
-          report: report.content,
-          reportTitle: report.title,
-          documentIds: report.documentIds,
-          documentNames: report.documentNames,
-          primaryPolicyType: report.primaryPolicyType,
-          additionalFacts: report.additionalFacts,
-          isExistingReport: true
-        }
+        reportData: reportDataPayload
       }
     });
+    console.log('✅ Navigation called');
   };
 
   const handleSelectReportForChat = async (report: ComparisonReport) => {
@@ -1262,7 +1262,7 @@ Please provide a detailed and helpful response based on both the comparison repo
                 <button
                   onClick={() => {
                     if (selectedView === 'reports') {
-                      navigate('/compare');
+                      navigate('/comparison');
                     } else {
                       setShowNewCustomerModal(true);
                     }
@@ -1379,7 +1379,7 @@ Please provide a detailed and helpful response based on both the comparison repo
                     onClick={() => {
                       if (selectedView === 'reports') {
                         // For reports view, navigate to comparison page to create new report
-                        navigate('/compare');
+                        navigate('/comparison');
                       } else {
                         setNewCustomerType(selectedView === 'customers' ? 'customer' : 'prospect');
                         setShowNewCustomerModal(true);

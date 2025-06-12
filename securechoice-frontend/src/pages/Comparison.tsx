@@ -37,7 +37,6 @@ const Comparison: React.FC = () => {
   const [additionalFacts, setAdditionalFacts] = useState('');
   const [progressStatus, setProgressStatus] = useState<ProgressStatus>({ message: '', progress: 0 });
   const [comparisonReport, setComparisonReport] = useState<string>('');
-  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const reportContentRef = useRef<HTMLDivElement>(null);
@@ -47,57 +46,103 @@ const Comparison: React.FC = () => {
     setSelectedDocs(selectedDocumentIds);
   }, [selectedDocumentIds]);
 
-  // Handle loading existing report from navigation state or sessionStorage
+  // Handle loading existing report from navigation state or URL
   useEffect(() => {
-    const state = location.state as any;
-    console.log('🔍 Comparison page navigation state:', state);
-    console.log('🔍 URL search params:', location.search);
+    console.log('🔄 Comparison component mounted/updated');
     
-    let reportData = null;
+    const urlParams = new URLSearchParams(location.search);
+    const reportId = urlParams.get('reportId');
     
-    // Try to get report data from navigation state first
-    if (state?.reportData?.isExistingReport) {
-      reportData = state.reportData;
-      console.log('📊 Found report data in navigation state');
-    } else {
-      // Fallback to sessionStorage
+    if (reportId) {
+      console.log('📊 Found reportId in URL, loading existing report...');
+      
+      // Try navigation state first
+      const state = location.state as any;
+      if (state?.reportData?.isExistingReport) {
+        console.log('📊 Loading from navigation state');
+        loadExistingReport(state.reportData);
+        return;
+      }
+      
+      // Try sessionStorage as fallback
       const storedData = sessionStorage.getItem('comparison-report-data');
       if (storedData) {
         try {
-          reportData = JSON.parse(storedData);
-          console.log('📊 Found report data in sessionStorage');
-          // Clear sessionStorage after use
-          sessionStorage.removeItem('comparison-report-data');
+          const reportData = JSON.parse(storedData);
+          console.log('📊 Loading from sessionStorage');
+          loadExistingReport(reportData);
+          sessionStorage.removeItem('comparison-report-data'); // Clean up
+          return;
         } catch (error) {
           console.error('Error parsing stored report data:', error);
         }
       }
+      
+      // Fallback: fetch the report from the API
+      console.log('📊 No local data found, fetching report from API...');
+      fetchReportFromAPI(reportId);
+    }
+  }, [location, setChatHistory]);
+
+  const fetchReportFromAPI = async (reportId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/comparison-reports/${reportId}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.ok) {
+        const report = await response.json();
+        console.log('📊 Successfully fetched report from API:', report.title);
+        
+        const reportDataPayload = {
+          report: report.content,
+          reportTitle: report.title,
+          documentIds: report.documentIds,
+          documentNames: report.documentNames,
+          primaryPolicyType: report.primaryPolicyType,
+          additionalFacts: report.additionalFacts,
+          isExistingReport: true
+        };
+        
+        loadExistingReport(reportDataPayload);
+      } else {
+        console.error('Failed to fetch report from API:', await response.text());
+        setError('Failed to load the comparison report. The report may have been deleted or you may not have permission to access it.');
+      }
+    } catch (error) {
+      console.error('Error fetching report from API:', error);
+      setError('Failed to load the comparison report. Please check your connection and try again.');
+    }
+  };
+
+  const loadExistingReport = (reportData: any) => {
+    console.log('📊 Loading existing report:', reportData.reportTitle);
+    
+    // Validate that we have the required data
+    if (!reportData.report || !reportData.reportTitle) {
+      console.error('❌ Invalid report data:', reportData);
+      setError('Invalid report data. Please try selecting the report again.');
+      return;
     }
     
-    if (reportData) {
-      console.log('📊 Loading existing report:', reportData.reportTitle);
-      
-      // Set up the comparison report view directly
-      setComparisonReport(reportData.report);
-      setSelectedDocs(reportData.documentIds || []);
-      setAdditionalFacts(reportData.additionalFacts || '');
-      
-      // Initialize chat with report context
-      const initialMessage: ChatMessage = {
-        id: `msg_${Date.now()}`,
-        content: `I've loaded the comparison report "${reportData.reportTitle}". This report analyzes ${reportData.documentNames?.join(', ') || 'your selected documents'}. Feel free to ask me any questions about the findings or the original documents!`,
-        sender: 'ai',
-        timestamp: new Date()
-      };
+    setComparisonReport(reportData.report || '');
+    setSelectedDocs(reportData.documentIds || []);
+    setAdditionalFacts(reportData.additionalFacts || '');
+    setCurrentStep('view-report');
+    
+    // Initialize chat with report context
+    const initialMessage: ChatMessage = {
+      id: `msg_${Date.now()}`,
+      content: `I've loaded the comparison report "${reportData.reportTitle}". This report analyzes ${reportData.documentNames?.join(', ') || 'your selected documents'}. Feel free to ask me any questions about the findings or the original documents!`,
+      sender: 'ai',
+      timestamp: new Date()
+    };
 
-      setChatHistory([initialMessage]);
-      setCurrentStep('view-report');
-      
-      console.log('✅ Report loaded, step set to view-report');
-    } else {
-      console.log('🔄 No existing report data found, staying on document-selection step');
-    }
-  }, [location.state, location.search, setChatHistory]);
+    setChatHistory([initialMessage]);
+    console.log('✅ Report loaded successfully');
+  };
 
   const handleDocumentSelection = (docId: string) => {
     setSelectedDocs(prev => 
@@ -122,7 +167,6 @@ const Comparison: React.FC = () => {
           });
           if (res.ok) {
             await res.json();
-            // Note: We can't directly update the document here since it's managed by context
             console.log('Text extracted for', file.name);
           } else {
             console.error('Text extraction failed:', await res.text());
@@ -145,7 +189,6 @@ const Comparison: React.FC = () => {
 
   const handleNextFromFacts = async () => {
     setCurrentStep('generating-report');
-    setIsGenerating(true);
     setError(null);
 
     try {
@@ -162,12 +205,12 @@ const Comparison: React.FC = () => {
       // Get selected documents with their content
       const selectedDocuments = documents.filter(doc => selectedDocs.includes(doc.id));
       
-             // Import prompt mapping utilities
-       const { determinePrimaryPolicyType } = await import('../utils/promptMapping');
-       
-       // Determine the primary policy type from selected documents
-       const primaryPolicyType = determinePrimaryPolicyType(selectedDocuments);
-       console.log('🔍 Comparison page - Primary policy type:', primaryPolicyType);
+      // Import prompt mapping utilities
+      const { determinePrimaryPolicyType } = await import('../utils/promptMapping');
+      
+      // Determine the primary policy type from selected documents
+      const primaryPolicyType = determinePrimaryPolicyType(selectedDocuments);
+      console.log('🔍 Comparison page - Primary policy type:', primaryPolicyType);
       
       // Create comparison report request
       const reportRequest = {
@@ -182,7 +225,11 @@ const Comparison: React.FC = () => {
         }))
       };
 
-      // Call backend API for comparison report generation
+      console.log('📊 Generating comparison report for documents:', selectedDocuments.map(d => d.name));
+
+      setProgressStatus({ message: 'Finalizing report...', progress: 90 });
+
+      // Generate the comparison report via backend API
       const response = await fetch(`${API_BASE_URL}/comparison/generate`, {
         method: 'POST',
         headers: {
@@ -197,44 +244,49 @@ const Comparison: React.FC = () => {
       }
 
       const result = await response.json();
-      
-      setProgressStatus({ message: 'Finalizing report...', progress: 100 });
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const reportContent = result.report || 'Comparison report generated successfully.';
 
-      setComparisonReport(result.report || 'Comparison report generated successfully.');
-      
-      // Save the comparison report automatically
+      setProgressStatus({ message: 'Saving report...', progress: 95 });
+
+      // Save to backend
+      const documentNames = selectedDocuments.map(doc => doc.name);
+      const reportTitle = `Comparison Report - ${documentNames.join(' vs ')}`;
+
       try {
-        const reportData = {
-          title: `Comparison Report - ${new Date().toLocaleDateString()}`,
-          content: result.report || 'Comparison report generated successfully.',
-          documentNames: selectedDocuments.map(doc => doc.name),
-          documentIds: selectedDocuments.map(doc => doc.id),
-          primaryPolicyType: primaryPolicyType,
-          additionalFacts: additionalFacts
-        };
-        
-        const savedReport = await fetch(`${API_BASE_URL}/comparison-reports`, {
+        const saveResponse = await fetch(`${API_BASE_URL}/comparison-reports`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify(reportData)
+          body: JSON.stringify({
+            title: reportTitle,
+            content: reportContent,
+            documentNames: documentNames,
+            documentIds: selectedDocs,
+            primaryPolicyType: primaryPolicyType,
+            additionalFacts: additionalFacts
+          })
         });
-        
-        if (savedReport.ok) {
-          console.log('📊 Comparison report saved successfully');
+
+        if (saveResponse.ok) {
+          const savedReport = await saveResponse.json();
+          console.log('✅ Report saved successfully:', savedReport.id);
+        } else {
+          console.error('Failed to save report:', await saveResponse.text());
         }
       } catch (saveError) {
-        console.error('Failed to save comparison report:', saveError);
-        // Continue anyway - don't block the user experience
+        console.error('Error saving report:', saveError);
+        // Continue anyway - the report was generated successfully
       }
-      
+
+      setProgressStatus({ message: 'Complete!', progress: 100 });
+      setComparisonReport(reportContent);
+
       // Initialize chat with report context
       const initialMessage: ChatMessage = {
         id: `msg_${Date.now()}`,
-        content: `I've generated a comprehensive comparison report for your selected documents. The report includes detailed analysis, coverage comparisons, and recommendations. Feel free to ask me any questions about the findings!`,
+        content: `I've generated your comparison report analyzing ${documentNames.join(', ')}. The report covers key differences, similarities, and recommendations. Feel free to ask me any questions about the findings!`,
         sender: 'ai',
         timestamp: new Date()
       };
@@ -242,11 +294,9 @@ const Comparison: React.FC = () => {
       setChatHistory([initialMessage]);
       setCurrentStep('view-report');
 
-    } catch (err) {
-      console.error('Report generation failed:', err);
-      setError('Failed to generate comparison report. Please try again.');
-    } finally {
-      setIsGenerating(false);
+    } catch (error) {
+      console.error('Error generating report:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate report');
     }
   };
 
@@ -263,16 +313,19 @@ const Comparison: React.FC = () => {
 
     setChatHistory(prev => [...prev, userMessage]);
 
-    // Get selected documents for context
+    // Get selected documents for context - handle case where documents might not be available
     const selectedDocuments = documents.filter(doc => selectedDocs.includes(doc.id));
     
-    // Create comprehensive context with both the report AND the original documents
-    const documentTexts = selectedDocuments.map((doc, index) =>
-      `DOCUMENT ${index + 1}: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})
+    // Create comprehensive context with both the report AND the original documents (if available)
+    let contextualPrompt = '';
+    
+    if (selectedDocuments.length > 0) {
+      const documentTexts = selectedDocuments.map((doc, index) =>
+        `DOCUMENT ${index + 1}: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})
 ${doc.extractedText || 'Unable to extract text from this document.'}`
-    ).join('\n\n---\n\n');
+      ).join('\n\n---\n\n');
 
-    const contextualPrompt = `
+      contextualPrompt = `
 Based on the following comparison report, original documents, and user question, provide a helpful response:
 
 COMPARISON REPORT:
@@ -285,6 +338,19 @@ USER QUESTION: ${message}
 
 Please provide a detailed and helpful response based on both the comparison report and the original document content. You can reference specific details from either the report or the original documents as needed.
 `;
+    } else {
+      // Fallback when documents are not available - use report only
+      contextualPrompt = `
+Based on the following comparison report and user question, provide a helpful response:
+
+COMPARISON REPORT:
+${comparisonReport}
+
+USER QUESTION: ${message}
+
+Please provide a detailed and helpful response based on the comparison report content. Note that the original policy documents are not currently available for reference, so please base your response primarily on the information contained in the comparison report above.
+`;
+    }
 
     try {
       let aiResponse = '';
@@ -576,7 +642,164 @@ Please provide a detailed and helpful response based on both the comparison repo
     }
   };
 
+  const renderViewReport = () => {
+    console.log('🎨 Rendering view-report case');
+    return (
+      <div className="h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ height: 'calc(100vh - 120px)' }}>
+          {/* Left Column - Report (2/3 width) */}
+          <div className="lg:col-span-2 bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-secondary dark:text-dark-text">
+                  Comparison Report
+                </h3>
+                {comparisonReport && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowExportMenu(!showExportMenu)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                      </svg>
+                      Export
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M7,10L12,15L17,10H7Z" />
+                      </svg>
+                    </button>
+                    
+                    {showExportMenu && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg shadow-lg z-50">
+                        <div className="p-1">
+                          <button
+                            onClick={() => {
+                              handleExportPDF();
+                              setShowExportMenu(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm text-secondary dark:text-dark-text hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors flex items-center gap-2"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
+                              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                            </svg>
+                            Export as PDF
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleExportDOC();
+                              setShowExportMenu(false);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm text-secondary dark:text-dark-text hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors flex items-center gap-2"
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600">
+                              <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                            </svg>
+                            Export as Word Document
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-gray-900">
+              <div className="max-w-4xl mx-auto bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
+                <div className="text-base leading-relaxed text-secondary dark:text-dark-text">
+                  {error ? (
+                    <div className="text-center py-12">
+                      <div className="text-red-500 text-6xl mb-4">⚠️</div>
+                      <h3 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">
+                        Error Loading Report
+                      </h3>
+                      <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
+                      <button
+                        onClick={() => navigate('/')}
+                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                      >
+                        Return to Home
+                      </button>
+                    </div>
+                  ) : !comparisonReport ? (
+                    <div className="text-center py-12">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+                      <h3 className="text-lg font-semibold text-secondary dark:text-dark-text mb-2">
+                        Loading Report...
+                      </h3>
+                      <p className="text-accent dark:text-dark-muted">
+                        Please wait while we load your comparison report.
+                      </p>
+                    </div>
+                  ) : (
+                    <div ref={reportContentRef} className="overflow-x-scroll markdown-content" style={{ overflowX: 'scroll' }}>
+                      <ReactMarkdown 
+                        remarkPlugins={[remarkGfm]}
+                        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+                      >
+                        {comparisonReport}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Chat */}
+          <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <h3 className="font-semibold text-secondary dark:text-dark-text">
+                Ask Questions About the Report
+              </h3>
+            </div>
+            <div className="flex-1 min-h-0">
+              <ChatInterface
+                messages={chatHistory}
+                onSendMessage={handleSendChatMessage}
+                isLoading={false}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div className="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700 mt-6">
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-secondary dark:text-dark-text rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            Back to Home
+          </button>
+          <button
+            onClick={() => {
+              // Reset wizard for new comparison
+              setCurrentStep('document-selection');
+              setSelectedDocs([]);
+              setAdditionalFacts('');
+              setComparisonReport('');
+              setChatHistory([]);
+              setError(null);
+              setShowExportMenu(false);
+            }}
+            className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+          >
+            Start New Comparison
+          </button>
+        </div>
+
+        {/* Click outside to close export menu */}
+        {showExportMenu && (
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setShowExportMenu(false)}
+          />
+        )}
+      </div>
+    );
+  };
+
   const renderStepContent = () => {
+    
     switch (currentStep) {
       case 'document-selection':
         return (
@@ -777,132 +1000,7 @@ Please provide a detailed and helpful response based on both the comparison repo
         );
 
       case 'view-report':
-        return (
-          <div className="h-full">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ height: 'calc(100vh - 120px)' }}>
-              {/* Left Column - Report (2/3 width) */}
-              <div className="lg:col-span-2 bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-secondary dark:text-dark-text">
-                      Comparison Report
-                    </h3>
-                    {comparisonReport && (
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowExportMenu(!showExportMenu)}
-                          className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                          </svg>
-                          Export
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M7,10L12,15L17,10H7Z" />
-                          </svg>
-                        </button>
-                        
-                        {showExportMenu && (
-                          <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg shadow-lg z-50">
-                            <div className="p-1">
-                              <button
-                                onClick={() => {
-                                  handleExportPDF();
-                                  setShowExportMenu(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-secondary dark:text-dark-text hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors flex items-center gap-2"
-                              >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
-                                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                                </svg>
-                                Export as PDF
-                              </button>
-                              <button
-                                onClick={() => {
-                                  handleExportDOC();
-                                  setShowExportMenu(false);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm text-secondary dark:text-dark-text hover:bg-gray-100 dark:hover:bg-gray-800 rounded transition-colors flex items-center gap-2"
-                              >
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600">
-                                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                                </svg>
-                                Export as Word Document
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-gray-900">
-                  <div className="max-w-4xl mx-auto bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
-                    <div className="text-base leading-relaxed text-secondary dark:text-dark-text">
-                      <div ref={reportContentRef} className="overflow-x-scroll markdown-content" style={{ overflowX: 'scroll' }}>
-                        <ReactMarkdown 
-                          remarkPlugins={[remarkGfm]}
-                          rehypePlugins={[rehypeHighlight, rehypeKatex]}
-                        >
-                          {comparisonReport}
-                        </ReactMarkdown>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column - Chat */}
-              <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
-                  <h3 className="font-semibold text-secondary dark:text-dark-text">
-                    Ask Questions About the Report
-                  </h3>
-                </div>
-                <div className="flex-1 min-h-0">
-                  <ChatInterface
-                    messages={chatHistory}
-                    onSendMessage={handleSendChatMessage}
-                    isLoading={false}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Navigation */}
-            <div className="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700 mt-6">
-              <button
-                onClick={() => navigate('/')}
-                className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-secondary dark:text-dark-text rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                Back to Home
-              </button>
-              <button
-                onClick={() => {
-                  // Reset wizard for new comparison
-                  setCurrentStep('document-selection');
-                  setSelectedDocs([]);
-                  setAdditionalFacts('');
-                  setComparisonReport('');
-                  setChatHistory([]);
-                  setError(null);
-                  setShowExportMenu(false);
-                }}
-                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-              >
-                Start New Comparison
-              </button>
-            </div>
-
-            {/* Click outside to close export menu */}
-            {showExportMenu && (
-              <div
-                className="fixed inset-0 z-40"
-                onClick={() => setShowExportMenu(false)}
-              />
-            )}
-          </div>
-        );
+        return renderViewReport();
 
       default:
         return null;
@@ -924,6 +1022,11 @@ Please provide a detailed and helpful response based on both the comparison repo
       </div>
     );
   }
+
+  console.log('🎨 Rendering Comparison component');
+  console.log('🎨 Current step in render:', currentStep);
+  console.log('🎨 Comparison report length in render:', comparisonReport.length);
+  console.log('🎨 Chat history length in render:', chatHistory.length);
 
   return (
     <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto">
