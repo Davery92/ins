@@ -8,6 +8,8 @@ import rehypeKatex from 'rehype-katex';
 import 'highlight.js/styles/github.css';
 import 'katex/dist/katex.min.css';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
+import ChatInterface, { ChatMessage } from '../components/ChatInterface';
+import { aiService } from '../services/aiService';
 
 interface ResearchReport {
   success: boolean;
@@ -31,6 +33,10 @@ const Research: React.FC = () => {
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
+  
+  // Chat state
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
 
@@ -98,6 +104,15 @@ const Research: React.FC = () => {
       const result = await response.json();
       setReport(result);
 
+      // Initialize chat with welcome message
+      const welcomeMessage: ChatMessage = {
+        id: `msg_${Date.now()}_welcome`,
+        content: `I've generated your underwriting research report for ${result.metadata.companyUrl}. The report analyzes ${result.metadata.pagesAnalyzed} pages and covers key business information, risk factors, and underwriting considerations. Feel free to ask me any questions about the findings!`,
+        sender: 'ai',
+        timestamp: new Date()
+      };
+      setChatHistory([welcomeMessage]);
+
       // Save report under customer if provided
       if (customerId) {
         try {
@@ -128,6 +143,87 @@ const Research: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Failed to generate research report');
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleChatMessage = async (message: string) => {
+    if (!report) return;
+
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: `msg_${Date.now()}_user`,
+      content: message,
+      sender: 'user',
+      timestamp: new Date()
+    };
+
+    setChatHistory(prev => [...prev, userMessage]);
+    setIsChatLoading(true);
+
+    try {
+      // Create context with the research report
+      const contextualPrompt = `Based on the following underwriting research report and user question, provide a helpful response:
+
+RESEARCH REPORT:
+${report.report}
+
+REPORT METADATA:
+- Company URL: ${report.metadata.companyUrl}
+- Pages Analyzed: ${report.metadata.pagesAnalyzed}
+- Document Count: ${report.metadata.documentCount}
+- Page Types: ${report.metadata.pageTypes.join(', ')}
+
+USER QUESTION: ${message}
+
+Please provide a detailed and helpful response based on the research report content.`;
+
+      let aiResponse = '';
+      
+      await aiService.sendRawPrompt(contextualPrompt, (chunk: string) => {
+        aiResponse = chunk;
+        
+        // Update AI message in real-time
+        setChatHistory(prev => {
+          const withoutLastAI = prev.filter(msg => msg.id !== 'ai_response_temp');
+          return [
+            ...withoutLastAI,
+            {
+              id: 'ai_response_temp',
+              content: aiResponse,
+              sender: 'ai' as const,
+              timestamp: new Date()
+            }
+          ];
+        });
+      });
+
+      // Finalize AI message with proper ID
+      setChatHistory(prev => {
+        const withoutTemp = prev.filter(msg => msg.id !== 'ai_response_temp');
+        return [
+          ...withoutTemp,
+          {
+            id: `msg_${Date.now()}_ai`,
+            content: aiResponse,
+            sender: 'ai' as const,
+            timestamp: new Date()
+          }
+        ];
+      });
+
+    } catch (error) {
+      console.error('Error sending chat message:', error);
+      setChatHistory(prev => [
+        ...prev,
+        {
+          id: `msg_${Date.now()}_error`,
+          content: 'Sorry, I encountered an error while processing your question. Please try again.',
+          sender: 'ai' as const,
+          timestamp: new Date()
+        }
+      ]);
+    } finally {
+      setIsChatLoading(false);
     }
   };
 
@@ -248,18 +344,20 @@ const Research: React.FC = () => {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">
-          Underwriting Research
-        </h1>
-        <p className="text-accent dark:text-dark-muted">
-          Generate comprehensive underwriting analysis by researching company websites, adding context, and uploading supporting documents.
-        </p>
-      </div>
+    <div className={`flex-1 flex flex-col ${report ? 'w-full bg-slate-50 dark:bg-dark-bg min-h-screen overflow-y-auto py-6' : 'p-6 max-w-7xl mx-auto overflow-y-auto'}`}>
+      {!report ? (
+        <div className="w-full">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">
+              Underwriting Research
+            </h1>
+            <p className="text-accent dark:text-dark-muted">
+              Generate comprehensive underwriting analysis by researching company websites, adding context, and uploading supporting documents.
+            </p>
+          </div>
 
-      {/* Research Form */}
-      <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg p-6 mb-6">
+          {/* Research Form */}
+          <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg p-6 mb-6">
         <h2 className="text-lg font-semibold text-secondary dark:text-dark-text mb-4">
           Research Parameters
         </h2>
@@ -359,53 +457,144 @@ const Research: React.FC = () => {
             </>
           )}
         </button>
-      </div>
-
-      {/* Error Display */}
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
-              <path d="M12,2L13.09,8.26L22,9L13.09,9.74L12,16L10.91,9.74L2,9L10.91,8.26L12,2Z" />
-            </svg>
-            <span className="text-red-700 dark:text-red-400 font-medium">Error</span>
           </div>
-          <p className="text-red-700 dark:text-red-400 mt-1">{error}</p>
-        </div>
-      )}
 
-      {/* Research Report Display */}
-      {report && (
-        <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg overflow-hidden dark:text-white">
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold text-secondary dark:text-dark-text">
-                Research Report
-              </h2>
-              <p className="text-sm text-accent dark:text-dark-muted">
-                Analyzed {report.metadata.pagesAnalyzed} pages • {report.metadata.documentCount} documents
-              </p>
+          {/* Error Display */}
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+              <div className="flex items-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
+                  <path d="M12,2L13.09,8.26L22,9L13.09,9.74L12,16L10.91,9.74L2,9L10.91,8.26L12,2Z" />
+                </svg>
+                <span className="text-red-700 dark:text-red-400 font-medium">Error</span>
+              </div>
+              <p className="text-red-700 dark:text-red-400 mt-1">{error}</p>
             </div>
-            <button
-              onClick={exportToPDF}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-              </svg>
-              Export PDF
-            </button>
+          )}
+        </div>
+      ) : (
+        // Research Report Display - Side-by-side layout
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[800px] max-w-[95vw] mx-auto px-4">
+          {/* Left Column - Report (2/3 width) */}
+          <div className="lg:col-span-2 bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-secondary dark:text-dark-text">
+                    Underwriting Research Report
+                  </h3>
+                  <p className="text-sm text-accent dark:text-dark-muted">
+                    Analyzed {report.metadata.pagesAnalyzed} pages • {report.metadata.documentCount} documents
+                  </p>
+                </div>
+                <button
+                  onClick={exportToPDF}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                  </svg>
+                  Export PDF
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900 min-h-[600px]">
+              <div className="w-full bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
+                <div className="text-base leading-relaxed text-secondary dark:text-dark-text">
+                  <div ref={reportRef} className="overflow-x-scroll markdown-content" style={{ overflowX: 'scroll' }}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm]}
+                      rehypePlugins={[rehypeHighlight, rehypeKatex]}
+                    >
+                      {report.report}
+                    </ReactMarkdown>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          
-          <div className="p-6 max-h-[70vh] overflow-y-auto">
-            <div ref={reportRef} className="prose prose-sm max-w-none dark:prose-invert dark:text-white markdown-content">
-              <ReactMarkdown 
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight, rehypeKatex]}
-                className="overflow-x-auto"
-              >
-                {report.report}
-              </ReactMarkdown>
+
+          {/* Right Column - Research Tools */}
+          <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col min-h-[800px]">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+              <h3 className="font-semibold text-secondary dark:text-dark-text">
+                Research Tools
+              </h3>
+            </div>
+            <div className="flex-1 p-4 space-y-4">
+              {/* Quick Actions */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Quick Actions</h4>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setReport(null);
+                      setError(null);
+                      setUrl('');
+                      setAdditionalText('');
+                      setUploadedDocuments([]);
+                    }}
+                    className="w-full px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Start New Research
+                  </button>
+                  <button
+                    onClick={exportToPDF}
+                    className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Export Report
+                  </button>
+                </div>
+              </div>
+
+              {/* Report Metadata */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Report Details</h4>
+                <div className="space-y-2 text-sm text-accent dark:text-dark-muted">
+                  <div className="flex justify-between">
+                    <span>Company URL:</span>
+                    <span className="font-mono text-xs">{report.metadata.companyUrl}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Pages Analyzed:</span>
+                    <span>{report.metadata.pagesAnalyzed}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Documents:</span>
+                    <span>{report.metadata.documentCount}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Page Types:</span>
+                    <span className="text-xs">{report.metadata.pageTypes.join(', ')}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Research Tips */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Research Tips</h4>
+                <div className="text-xs text-accent dark:text-dark-muted space-y-2">
+                  <p>• Review the risk factors section carefully</p>
+                  <p>• Pay attention to business operations and revenue sources</p>
+                  <p>• Note any regulatory or compliance requirements</p>
+                  <p>• Check for international operations or exposures</p>
+                  <p>• Look for growth trends and expansion plans</p>
+                </div>
+              </div>
+
+              {/* Chat Interface */}
+              <div className="space-y-3 flex-1 flex flex-col">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Ask Questions</h4>
+                <div className="flex-1 min-h-[300px] border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                  <ChatInterface
+                    messages={chatHistory}
+                    onSendMessage={handleChatMessage}
+                    isLoading={isChatLoading}
+                    documents={[]}
+                    className="h-full"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>

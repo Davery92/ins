@@ -22,7 +22,7 @@ function App() {
       <AuthProvider>
         <DocumentProvider>
           <Router>
-            <div className="relative flex size-full min-h-screen flex-col bg-slate-50 dark:bg-dark-bg overflow-x-hidden font-sans transition-colors duration-200">
+            <div className="relative flex h-screen w-screen flex-col bg-slate-50 dark:bg-dark-bg font-sans transition-colors duration-200">
               <Routes>
                 {/* Public route - Login */}
                 <Route path="/login" element={<Login />} />
@@ -31,7 +31,7 @@ function App() {
                 {/* Protected routes */}
                 <Route path="/*" element={
                   <ProtectedRoute>
-                    <div className="layout-container flex h-full grow flex-col">
+                    <div className="flex h-full w-full flex-col">
                       <Header />
                       <div className="flex flex-1">
                         <Routes>

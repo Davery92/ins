@@ -572,15 +572,20 @@ Please provide a detailed and helpful response based on the comparison report co
   const renderViewReport = () => {
     console.log('🎨 Rendering view-report case');
     return (
-      <div className="h-full">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ height: 'calc(100vh - 120px)' }}>
+      <div className="w-full min-h-screen bg-slate-50 dark:bg-dark-bg">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-[800px] max-w-[95vw] mx-auto px-4">
           {/* Left Column - Report (2/3 width) */}
           <div className="lg:col-span-2 bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold text-secondary dark:text-dark-text">
-                  Comparison Report
-                </h3>
+                <div>
+                  <h3 className="font-semibold text-secondary dark:text-dark-text">
+                    Document Comparison Report
+                  </h3>
+                  <p className="text-sm text-accent dark:text-dark-muted">
+                    Comparing {selectedDocs.length} documents • Generated {new Date().toLocaleDateString()}
+                  </p>
+                </div>
                 {comparisonReport && (
                   <div className="relative">
                     <button
@@ -597,7 +602,7 @@ Please provide a detailed and helpful response based on the comparison report co
                     </button>
                     
                     {showExportMenu && (
-                      <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg shadow-lg z-50">
+                      <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg shadow-lg z-[60]">
                         <div className="p-1">
                           <button
                             onClick={() => {
@@ -630,8 +635,8 @@ Please provide a detailed and helpful response based on the comparison report co
                 )}
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-8 bg-gray-50 dark:bg-gray-900">
-              <div className="max-w-4xl mx-auto bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
+            <div className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900 min-h-[600px]">
+              <div className="w-full bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
                 <div className="text-base leading-relaxed text-secondary dark:text-dark-text">
                   {error ? (
                     <div className="text-center py-12">
@@ -672,48 +677,93 @@ Please provide a detailed and helpful response based on the comparison report co
             </div>
           </div>
 
-          {/* Right Column - Chat */}
-          <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
+          {/* Right Column - Comparison Tools */}
+          <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col min-h-[800px]">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <h3 className="font-semibold text-secondary dark:text-dark-text">
-                Ask Questions About the Report
+                Comparison Tools
               </h3>
             </div>
-            <div className="flex-1 min-h-0">
-              <ChatInterface
-                messages={chatHistory}
-                onSendMessage={handleSendChatMessage}
-                isLoading={false}
-                onCitationClick={handleCitationClick}
-                documents={documents.map(doc => ({id: doc.id, name: doc.name}))}
-              />
+            <div className="flex-1 p-4 space-y-4">
+              {/* Quick Actions */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Quick Actions</h4>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      // Reset wizard for new comparison
+                      setCurrentStep('document-selection');
+                      setSelectedDocs([]);
+                      setAdditionalFacts('');
+                      setComparisonReport('');
+                      setChatHistory([]);
+                      setError(null);
+                      setShowExportMenu(false);
+                    }}
+                    className="w-full px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Start New Comparison
+                  </button>
+                  <button
+                    onClick={() => setShowExportMenu(!showExportMenu)}
+                    className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Export Report
+                  </button>
+                  <button
+                    onClick={() => navigate('/')}
+                    className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                  >
+                    Back to Home
+                  </button>
+                </div>
+              </div>
+
+              {/* Document Details */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Documents Compared</h4>
+                <div className="space-y-2">
+                  {documents.filter(doc => selectedDocs.includes(doc.id)).map((doc, index) => (
+                    <div key={doc.id} className="text-sm p-2 bg-gray-50 dark:bg-gray-800 rounded border">
+                      <div className="font-medium text-secondary dark:text-dark-text truncate">
+                        {index + 1}. {doc.name}
+                      </div>
+                      <div className="text-xs text-accent dark:text-dark-muted">
+                        {doc.policyType || 'Unknown Policy'} • {(doc.size / 1024).toFixed(1)} KB
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Comparison Insights */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Comparison Insights</h4>
+                <div className="text-xs text-accent dark:text-dark-muted space-y-2">
+                  <p>• Review coverage differences carefully</p>
+                  <p>• Pay attention to policy limits and deductibles</p>
+                  <p>• Note any exclusions or special conditions</p>
+                  <p>• Compare premium costs and payment terms</p>
+                  <p>• Look for additional benefits or riders</p>
+                </div>
+              </div>
+
+              {/* Chat Interface */}
+              <div className="space-y-3 flex-1 flex flex-col">
+                <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Ask Questions</h4>
+                <div className="flex-1 min-h-[300px] border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                  <ChatInterface
+                    messages={chatHistory}
+                    onSendMessage={handleSendChatMessage}
+                    isLoading={false}
+                    onCitationClick={handleCitationClick}
+                    documents={documents.map(doc => ({id: doc.id, name: doc.name}))}
+                    className="h-full"
+                  />
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Navigation */}
-        <div className="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700 mt-6">
-          <button
-            onClick={() => navigate('/')}
-            className="px-6 py-2 border border-gray-300 dark:border-gray-600 text-secondary dark:text-dark-text rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-          >
-            Back to Home
-          </button>
-          <button
-            onClick={() => {
-              // Reset wizard for new comparison
-              setCurrentStep('document-selection');
-              setSelectedDocs([]);
-              setAdditionalFacts('');
-              setComparisonReport('');
-              setChatHistory([]);
-              setError(null);
-              setShowExportMenu(false);
-            }}
-            className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-          >
-            Start New Comparison
-          </button>
         </div>
 
         {/* Click outside to close export menu */}
@@ -967,7 +1017,7 @@ Please provide a detailed and helpful response based on the comparison report co
   console.log('🎨 Chat history length in render:', chatHistory.length);
 
   return (
-    <div className="flex-1 flex flex-col p-6 max-w-7xl mx-auto">
+    <div className={`flex-1 flex flex-col ${currentStep === 'view-report' ? 'w-full' : 'p-6 max-w-7xl mx-auto'} overflow-y-auto`}>
       {/* Progress Indicator - Hide on view-report step */}
       {currentStep !== 'view-report' && (
         <div className="mb-8">
