@@ -417,6 +417,10 @@ Please provide a detailed and helpful response based on the comparison report co
     }
   };
 
+  const handleClearChatHistory = () => {
+    setChatHistory([]);
+  };
+
   const handleExportPDF = () => {
     if (!comparisonReport || !reportContentRef.current) return;
 
@@ -759,6 +763,7 @@ Please provide a detailed and helpful response based on the comparison report co
                     onCitationClick={handleCitationClick}
                     documents={documents.map(doc => ({id: doc.id, name: doc.name}))}
                     className="h-full"
+                    onClearChat={handleClearChatHistory}
                   />
                 </div>
               </div>

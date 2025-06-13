@@ -45,8 +45,14 @@ export const authenticateToken = async (
     };
 
     next();
-  } catch (error) {
+  } catch (error: any) {
     console.error('Auth middleware error:', error);
-    res.status(403).json({ error: 'Invalid or expired token' });
+    if (error instanceof jwt.TokenExpiredError) {
+      res.status(401).json({ error: 'Token expired' });
+    } else if (error instanceof jwt.JsonWebTokenError) {
+      res.status(403).json({ error: 'Invalid token' });
+    } else {
+      res.status(403).json({ error: 'Invalid or expired token' });
+    }
   }
 }; 

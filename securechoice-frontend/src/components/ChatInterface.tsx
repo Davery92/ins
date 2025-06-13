@@ -292,6 +292,7 @@ interface ChatInterfaceProps {
   className?: string;
   documents?: Array<{id: string, name: string}>;
   citationMap?: SpanData[]; // Ordered list of spans corresponding to [1], [2], [3], etc.
+  onClearChat?: () => void;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -301,19 +302,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   className = '',
   onCitationClick,
   documents,
-  citationMap
+  citationMap,
+  onClearChat
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const [detectedCharts, setDetectedCharts] = useState<ChartData[]>([]);
+  const [isOverlayMode, setIsOverlayMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive, but keep chat in view
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    if (messagesEndRef.current && !isOverlayMode) {
+      // Scroll the chat container, not the entire page
+      messagesEndRef.current.scrollIntoView({ 
+        behavior: 'smooth',
+        block: 'nearest'
+      });
+    }
+  }, [messages, isOverlayMode]);
 
   // Detect charts when messages change
   useEffect(() => {
@@ -323,10 +333,48 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messages]);
 
+  // Handle overlay mode
+  const toggleOverlayMode = () => {
+    setIsOverlayMode(!isOverlayMode);
+  };
+
+  // Handle click outside overlay to close
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === e.currentTarget) {
+      setIsOverlayMode(false);
+    }
+  };
+
+  // Calculate dynamic height based on content - taller aspect ratio
+  const calculateChatHeight = () => {
+    if (isOverlayMode) return 'h-[85vh]';
+    
+    const messageCount = messages.length;
+    if (messageCount === 0) return 'h-[500px]';
+    if (messageCount <= 3) return 'h-[600px]';
+    if (messageCount <= 6) return 'h-[700px]';
+    if (messageCount <= 10) return 'h-[800px]';
+    return 'h-[900px]';
+  };
+
+  // Handle clear chat
+  const handleClearChat = () => {
+    if (onClearChat && messages.length > 0) {
+      if (window.confirm('Are you sure you want to clear this chat? This action cannot be undone.')) {
+        onClearChat();
+      }
+    }
+  };
+
   const handleSendMessage = () => {
     if (inputMessage.trim() && !isLoading) {
       onSendMessage(inputMessage.trim());
       setInputMessage('');
+      
+      // Focus back to input after sending
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 100);
     }
   };
 
@@ -369,12 +417,61 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   };
 
-  return (
-    <div className="flex flex-col bg-white dark:bg-dark-surface rounded-xl shadow-lg border border-gray-200 dark:border-dark-border h-[600px] canvas-like-chat">
+  const chatContent = (
+    <div 
+      ref={chatContainerRef}
+      className={`flex flex-col bg-white dark:bg-dark-surface rounded-xl shadow-lg border border-gray-200 dark:border-dark-border canvas-like-chat ${calculateChatHeight()} ${
+        isOverlayMode ? 'w-[90vw] max-w-6xl' : 'w-full'
+      }`}
+    >
+      {/* Header with overlay toggle and clear buttons */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-dark-surface rounded-t-xl">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+          <span className="text-sm font-medium text-secondary dark:text-dark-text">RiskNinja AI</span>
+          {messages.length > 0 && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded-full">
+              {messages.length} message{messages.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          {/* Clear Chat Button */}
+          {onClearChat && messages.length > 0 && (
+            <button
+              onClick={handleClearChat}
+              className="p-2 text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title="Clear chat"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14zM10 11v6M14 11v6"/>
+              </svg>
+            </button>
+          )}
+          
+          {/* Expand/Minimize Button */}
+          <button
+            onClick={toggleOverlayMode}
+            className="p-2 text-gray-500 dark:text-gray-400 hover:text-primary dark:hover:text-blue-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            title={isOverlayMode ? "Minimize chat" : "Expand chat"}
+          >
+            {isOverlayMode ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+              </svg>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Messages Area - Gemini Canvas Style */}
       <div 
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-8 space-y-8 bg-gradient-to-br from-slate-50/80 via-white to-slate-50/60 dark:from-slate-900/80 dark:via-slate-800 dark:to-slate-900/60 backdrop-blur-sm"
+        className="flex-1 overflow-y-auto p-8 space-y-8 bg-gradient-to-br from-slate-50/80 via-white to-slate-50/60 dark:from-slate-900/80 dark:via-slate-800 dark:to-slate-900/60 backdrop-blur-sm chat-messages-container"
       >
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center py-16">
@@ -471,7 +568,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       {/* Input Area - Enhanced Gemini Style */}
-      <div className="p-6 bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm border-t border-gray-200/50 dark:border-gray-700/50">
+      <div className="p-6 bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm border-t border-gray-200/50 dark:border-gray-700/50 rounded-b-xl">
         {user ? (
           <>
             <div className="flex items-end gap-4 max-w-6xl mx-auto">
@@ -562,6 +659,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         )}
       </div>
+    </div>
+  );
+
+  if (isOverlayMode) {
+    return (
+      <div 
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+        onClick={handleOverlayClick}
+      >
+        {chatContent}
+      </div>
+    );
+  }
+
+  return (
+    <div className={className}>
+      {chatContent}
     </div>
   );
 };

@@ -227,6 +227,10 @@ Please provide a detailed and helpful response based on the research report cont
     }
   };
 
+  const handleClearChatHistory = () => {
+    setChatHistory([]);
+  };
+
   const exportToPDF = () => {
     if (!report || !reportRef.current) return;
 
@@ -592,6 +596,7 @@ Please provide a detailed and helpful response based on the research report cont
                     isLoading={isChatLoading}
                     documents={[]}
                     className="h-full"
+                    onClearChat={handleClearChatHistory}
                   />
                 </div>
               </div>

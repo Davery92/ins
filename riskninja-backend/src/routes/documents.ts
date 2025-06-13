@@ -171,6 +171,42 @@ router.get(
   }
 );
 
+// GET /api/documents/:id/stream - stream document content directly
+router.get(
+  '/:id/stream',
+  authenticateToken,
+  checkLicense,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = (req as any).user.id;
+      const { id } = req.params;
+      
+      const doc = await PolicyDocumentModel.findOne({ where: { id, userId } });
+      if (!doc || !doc.fileKey) {
+        res.status(404).json({ error: 'Document not found' });
+        return;
+      }
+
+      // Get file buffer from storage
+      const fileBuffer = await FileStorageService.getFileBuffer(doc.fileKey);
+      
+      // Set appropriate headers
+      res.setHeader('Content-Type', doc.type || 'application/octet-stream');
+      res.setHeader('Content-Length', fileBuffer.length);
+      res.setHeader('Content-Disposition', `inline; filename="${doc.originalName}"`);
+      res.setHeader('Cache-Control', 'public, max-age=3600'); // Cache for 1 hour
+      
+      // Stream the file
+      res.send(fileBuffer);
+      return;
+    } catch (error) {
+      console.error('Document stream error:', error);
+      res.status(500).json({ error: 'Failed to stream document' });
+      return;
+    }
+  }
+);
+
 // DELETE /api/documents/:id - delete user's document from both DB and storage
 router.delete(
   '/:id',

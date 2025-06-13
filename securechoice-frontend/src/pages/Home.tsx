@@ -5,7 +5,7 @@ import ApiStatus from '../components/ApiStatus';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
 import Dashboard from '../components/Dashboard';
 import OnboardingTour from '../components/OnboardingTour';
-import { useDocuments } from '../contexts/DocumentContext';
+import { useDocuments, PolicyDocument } from '../contexts/DocumentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { aiService } from '../services/aiService';
 // Policy-specific prompts are now imported dynamically in functions
@@ -13,6 +13,7 @@ import { defaultPolicyPrompts } from '../prompts/policyPrompts';
 import { chatContextService, ChatContext } from '../services/chatContextService';
 import PdfViewer, { CitationHighlight } from '../components/PdfViewer';
 import FeatureCard from '../components/FeatureCard';
+import PdfDocumentViewer from '../components/PdfDocumentViewer';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
@@ -59,6 +60,12 @@ const Home: React.FC = () => {
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [newCustomerType, setNewCustomerType] = useState<'customer' | 'prospect'>('customer');
   
+  // Customer detail view states
+  const [customerDetailView, setCustomerDetailView] = useState<'chats' | 'documents'>('chats');
+  const [showContactOverlay, setShowContactOverlay] = useState(false);
+  const [chatHistoryPage, setChatHistoryPage] = useState(0);
+  const CHATS_PER_PAGE = 6;
+  
   // Document upload popup state
   const [showDocumentUploadModal, setShowDocumentUploadModal] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -74,6 +81,11 @@ const Home: React.FC = () => {
   const [customerChats, setCustomerChats] = useState<{[key: string]: any[]}>({});
   const [loadingCustomerData, setLoadingCustomerData] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
+  
+  // Document selection and viewer state
+  const [customerSelectedDocumentIds, setCustomerSelectedDocumentIds] = useState<string[]>([]);
+  const [showDocumentViewer, setShowDocumentViewer] = useState(false);
+  const [viewingDocument, setViewingDocument] = useState<PolicyDocument | null>(null);
 
   const { user, token } = useAuth();
   const {
@@ -292,6 +304,11 @@ const Home: React.FC = () => {
     setCurrentCustomer(customer.id);
     // Clear previous documents when switching customers
     setSelectedDocumentIds([]);
+    
+    // Reset customer detail view states
+    setCustomerDetailView('chats');
+    setShowContactOverlay(false);
+    setChatHistoryPage(0);
     
     // Set default chat title for this customer
     const today = new Date().toLocaleDateString();
@@ -1070,6 +1087,34 @@ Please provide a detailed and helpful response based on both the comparison repo
     return customerChats[customerId] || [];
   };
 
+  // Pagination helpers for chat history tiles
+  const getPaginatedChats = (customerId: string) => {
+    const chats = getCustomerChats(customerId);
+    const startIndex = chatHistoryPage * CHATS_PER_PAGE;
+    const endIndex = startIndex + CHATS_PER_PAGE;
+    return chats.slice(startIndex, endIndex);
+  };
+
+  const getTotalChatPages = (customerId: string) => {
+    const chats = getCustomerChats(customerId);
+    return Math.ceil(chats.length / CHATS_PER_PAGE);
+  };
+
+  const handleNextChatPage = () => {
+    if (selectedCustomer) {
+      const totalPages = getTotalChatPages(selectedCustomer.id);
+      if (chatHistoryPage < totalPages - 1) {
+        setChatHistoryPage(prev => prev + 1);
+      }
+    }
+  };
+
+  const handlePrevChatPage = () => {
+    if (chatHistoryPage > 0) {
+      setChatHistoryPage(prev => prev - 1);
+    }
+  };
+
   const handleClearChat = () => {
     setChatHistory([]);
     startNewSession();
@@ -1242,6 +1287,164 @@ Please provide a detailed and helpful response based on both the comparison repo
       }
     } catch (err) {
       console.error('Failed to fetch citation data:', err);
+    }
+  };
+
+  // Document selection handlers
+  const handleDocumentCheckboxChange = (documentId: string, checked: boolean) => {
+    if (checked) {
+      setCustomerSelectedDocumentIds(prev => [...prev, documentId]);
+    } else {
+      setCustomerSelectedDocumentIds(prev => prev.filter(id => id !== documentId));
+    }
+  };
+
+  const handleDocumentClick = async (document: PolicyDocument) => {
+    console.log('📄 Opening document viewer for:', document.name, document);
+    
+    let documentToView = document;
+    
+    // If the document has an ID but no local file, try to get a fresh download URL
+    if (document.id && !document.file) {
+      try {
+        console.log('📄 Fetching fresh download URL for document:', document.id);
+        const response = await fetch(`${API_BASE_URL}/documents/${document.id}/download`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('📄 Got fresh download URL:', data.downloadUrl);
+          
+          // Test if the URL is accessible
+          try {
+            const testResponse = await fetch(data.downloadUrl, { method: 'HEAD' });
+            if (testResponse.ok) {
+              console.log('📄 Download URL is accessible');
+              documentToView = { ...document, fileUrl: data.downloadUrl };
+            } else {
+              console.warn('📄 Download URL test failed:', testResponse.status);
+            }
+          } catch (testError) {
+            console.warn('📄 Could not test download URL:', testError);
+            // Still try to use the URL even if test fails
+            documentToView = { ...document, fileUrl: data.downloadUrl };
+          }
+        } else {
+          console.warn('📄 Failed to get fresh download URL:', response.status, await response.text());
+        }
+      } catch (error) {
+        console.error('📄 Error fetching fresh download URL:', error);
+      }
+    }
+    
+    setViewingDocument(documentToView);
+    setShowDocumentViewer(true);
+  };
+
+  const getSelectedCustomerDocuments = () => {
+    if (!selectedCustomer) return [];
+    const customerDocs = getCustomerDocuments(selectedCustomer.id);
+    return customerDocs.filter(doc => customerSelectedDocumentIds.includes(doc.id));
+  };
+
+  // Updated chat handler to use selected documents
+  const handleCustomerChatMessage = async (message: string) => {
+    if (!selectedCustomer) return;
+
+    // Add user message
+    const userMessage: ChatMessage = {
+      id: generateMessageId(),
+      content: message,
+      sender: 'user',
+      timestamp: new Date()
+    };
+    
+    setChatHistory(prev => [...prev, userMessage]);
+
+    // Get selected documents for context
+    const selectedDocs = getSelectedCustomerDocuments();
+    
+    // Create context with selected documents
+    const documentTexts = selectedDocs.map((doc, index) =>
+      `DOCUMENT ${index + 1}: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})
+${doc.extractedText || 'Unable to extract text from this document.'}`
+    ).join('\n\n---\n\n');
+
+    const contextualPrompt = selectedDocs.length > 0 
+      ? `Based on the following documents for customer "${selectedCustomer.name}" and the user question, provide a helpful response:
+
+DOCUMENTS:
+${documentTexts}
+
+USER QUESTION: ${message}
+
+Please provide a detailed and helpful response based on the document content.`
+      : `The user is asking about customer "${selectedCustomer.name}". No documents are currently selected. 
+
+USER QUESTION: ${message}
+
+Please provide a helpful response. You may suggest selecting relevant documents for more detailed analysis.`;
+
+    // Create AI message with streaming
+    const aiMessageId = generateMessageId();
+    const aiMessage: ChatMessage = {
+      id: aiMessageId,
+      content: '',
+      sender: 'ai',
+      timestamp: new Date(),
+      isStreaming: true
+    };
+    
+    setChatHistory(prev => [...prev, aiMessage]);
+
+    try {
+      let finalAiContent = '';
+      await aiService.sendRawPrompt(contextualPrompt, (streamContent) => {
+        finalAiContent = streamContent;
+        setChatHistory(prev =>
+          prev.map(msg =>
+            msg.id === aiMessageId ? { ...msg, content: streamContent } : msg
+          )
+        );
+      });
+
+      // Mark streaming as complete
+      const finalAiMessage: ChatMessage = {
+        id: aiMessageId,
+        content: finalAiContent,
+        sender: 'ai',
+        timestamp: new Date(),
+        isStreaming: false
+      };
+
+      setChatHistory(prev => 
+        prev.map(msg => 
+          msg.id === aiMessageId 
+            ? finalAiMessage
+            : msg
+        )
+      );
+
+    } catch (error) {
+      console.error('Customer chat error:', error);
+      const errorMessage: ChatMessage = {
+        id: aiMessageId,
+        content: 'Sorry, I encountered an error. Please try again.',
+        sender: 'ai',
+        timestamp: new Date(),
+        isStreaming: false
+      };
+
+      setChatHistory(prev => 
+        prev.map(msg => 
+          msg.id === aiMessageId 
+            ? errorMessage
+            : msg
+        )
+      );
     }
   };
 
@@ -1434,133 +1637,243 @@ Please provide a detailed and helpful response based on both the comparison repo
                 </div>
               </div>
 
-              {/* Customer Details */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Documents Section */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                  <h3 className="font-medium text-secondary dark:text-dark-text mb-3 flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                    </svg>
-                    Documents ({getCustomerDocuments(selectedCustomer.id).length})
-                  </h3>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
+              {/* Toggle Buttons */}
+              <div className="flex items-center gap-2 mb-6">
+                <button
+                  onClick={() => setCustomerDetailView('chats')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    customerDetailView === 'chats'
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="inline mr-2">
+                    <path d="M12,3C6.5,3 2,6.58 2,11A7.18,7.18 0 0,0 2.64,14.25L1,22L8.75,20.36C9.81,20.75 10.87,21 12,21C17.5,21 22,17.42 22,13C22,8.58 17.5,5 12,5M12,19C11,19 10.03,18.75 9.18,18.5L8.5,18.25L4.5,19.5L5.75,15.5L5.5,14.82C5.25,13.97 5,13 5,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18Z" />
+                  </svg>
+                  Chat History ({getCustomerChats(selectedCustomer.id).length})
+                </button>
+                <button
+                  onClick={() => setCustomerDetailView('documents')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    customerDetailView === 'documents'
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="inline mr-2">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                  </svg>
+                  Documents ({getCustomerDocuments(selectedCustomer.id).length})
+                </button>
+                <button
+                  onClick={() => setShowContactOverlay(true)}
+                  className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="inline mr-2">
+                    <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+                  </svg>
+                  Contact Info
+                </button>
+              </div>
+
+              {/* Content Area */}
+              {customerDetailView === 'chats' ? (
+                <div>
+                  {/* Chat History Tiles */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                    {getPaginatedChats(selectedCustomer.id).map((chat) => (
+                      <div
+                        key={chat.id}
+                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer group"
+                        onClick={() => loadChatSession(chat.id)}
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600 dark:text-blue-400">
+                                <path d="M12,3C6.5,3 2,6.58 2,11A7.18,7.18 0 0,0 2.64,14.25L1,22L8.75,20.36C9.81,20.75 10.87,21 12,21C17.5,21 22,17.42 22,13C22,8.58 17.5,5 12,5" />
+                              </svg>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="font-medium text-secondary dark:text-dark-text text-sm leading-tight break-words">
+                                {chat.title || 'Untitled Chat'}
+                              </h4>
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => handleDeleteChatSession(chat.id, e)}
+                            className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity flex-shrink-0 ml-2"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22C6.47,22 2,17.5 2,12A10,10 0 0,1 12,2M12.5,7V12.25L17,14.92L16.25,16.15L11,13V7H12.5Z" />
+                            </svg>
+                            {new Date(chat.lastActivity).toLocaleDateString()}
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                              <path d="M9,22A1,1 0 0,1 8,21V18H4A2,2 0 0,1 2,16V4C2,2.89 2.9,2 4,2H20A2,2 0 0,1 22,4V16A2,2 0 0,1 20,18H13.9L10.2,21.71C10,21.9 9.75,22 9.5,22V22H9Z" />
+                            </svg>
+                            {chat.messageCount} messages
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {getTotalChatPages(selectedCustomer.id) > 1 && (
+                    <div className="flex items-center justify-center gap-4">
+                      <button
+                        onClick={handlePrevChatPage}
+                        disabled={chatHistoryPage === 0}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z" />
+                        </svg>
+                        Previous
+                      </button>
+                      <span className="text-sm text-accent dark:text-dark-muted">
+                        Page {chatHistoryPage + 1} of {getTotalChatPages(selectedCustomer.id)}
+                      </span>
+                      <button
+                        onClick={handleNextChatPage}
+                        disabled={chatHistoryPage >= getTotalChatPages(selectedCustomer.id) - 1}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Next
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                          <path d="M4,11V13H16L10.5,18.5L11.92,19.92L19.84,12L11.92,4.08L10.5,5.5L16,11H4Z" />
+                        </svg>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Empty State */}
+                  {getCustomerChats(selectedCustomer.id).length === 0 && (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-gray-400">
+                          <path d="M12,3C6.5,3 2,6.58 2,11A7.18,7.18 0 0,0 2.64,14.25L1,22L8.75,20.36C9.81,20.75 10.87,21 12,21C17.5,21 22,17.42 22,13C22,8.58 17.5,5 12,5" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-medium text-secondary dark:text-dark-text mb-2">
+                        No chat sessions yet
+                      </h3>
+                      <p className="text-accent dark:text-dark-muted">
+                        Start a conversation with this customer using the chat interface below.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {/* Documents Tiles */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {getCustomerDocuments(selectedCustomer.id).map((doc) => (
                       <div
                         key={doc.id}
-                        className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border hover:shadow-sm transition-shadow"
+                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow group relative"
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-secondary dark:text-dark-text truncate">
-                            {doc.name}
-                          </p>
-                          <p className="text-xs text-accent dark:text-dark-muted">
-                            {doc.policyType} • {new Date(doc.uploadedAt).toLocaleDateString()}
-                          </p>
+                        {/* Checkbox */}
+                        <div className="absolute top-3 left-3 z-10">
+                          <input
+                            type="checkbox"
+                            checked={customerSelectedDocumentIds.includes(doc.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleDocumentCheckboxChange(doc.id, e.target.checked);
+                            }}
+                            className="w-4 h-4 text-primary bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-primary focus:ring-2"
+                          />
                         </div>
-                        <button
-                          onClick={(e) => handleDeleteDocument(doc.id, doc.name, e)}
-                          className="text-red-500 hover:text-red-700 p-1"
+                        
+                        {/* Clickable document area */}
+                        <div 
+                          className="cursor-pointer"
+                          onClick={() => handleDocumentClick(doc)}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-                          </svg>
-                        </button>
+                          <div className="flex items-start justify-between mb-3 pl-6">
+                            <div className="flex items-start gap-2 flex-1 min-w-0">
+                              <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600 dark:text-green-400">
+                                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-secondary dark:text-dark-text text-sm leading-tight break-words">
+                                  {doc.name}
+                                </h4>
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteDocument(doc.id, doc.name, e);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity flex-shrink-0 ml-2"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="space-y-2 pl-6">
+                            <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9,10H7V12H9V10M13,10H11V12H13V10M17,10H15V12H17V10M19,3A2,2 0 0,1 21,5V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V5A2,2 0 0,1 5,3H6V1H8V3H16V1H18V3H19M19,19V8H5V19H19M7,16H9V14H7V16M13,16H11V14H13V16M17,16H15V14H17V16Z" />
+                              </svg>
+                              {new Date(doc.uploadedAt).toLocaleDateString()}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z" />
+                              </svg>
+                              {doc.policyType || 'Unknown Type'}
+                            </div>
+                            <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                              </svg>
+                              {(doc.size / (1024 * 1024)).toFixed(2)} MB
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
-                    {getCustomerDocuments(selectedCustomer.id).length === 0 && (
-                      <p className="text-sm text-accent dark:text-dark-muted text-center py-4">
+                  </div>
+
+                  {/* Empty State */}
+                  {getCustomerDocuments(selectedCustomer.id).length === 0 && (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-gray-400">
+                          <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-medium text-secondary dark:text-dark-text mb-2">
                         No documents uploaded yet
+                      </h3>
+                      <p className="text-accent dark:text-dark-muted mb-4">
+                        Upload documents for this customer to get started with analysis.
                       </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Chat Sessions Section */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                  <h3 className="font-medium text-secondary dark:text-dark-text mb-3 flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12,3C6.5,3 2,6.58 2,11A7.18,7.18 0 0,0 2.64,14.25L1,22L8.75,20.36C9.81,20.75 10.87,21 12,21C17.5,21 22,17.42 22,13C22,8.58 17.5,5 12,5M12,19C11,19 10.03,18.75 9.18,18.5L8.5,18.25L4.5,19.5L5.75,15.5L5.5,14.82C5.25,13.97 5,13 5,12A6,6 0 0,1 12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18Z" />
-                    </svg>
-                    Chat Sessions ({getCustomerChats(selectedCustomer.id).length})
-                  </h3>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    {getCustomerChats(selectedCustomer.id).map((chat) => (
-                      <div
-                        key={chat.id}
-                        className="flex items-center justify-between p-2 bg-white dark:bg-gray-700 rounded border hover:shadow-sm transition-shadow cursor-pointer"
-                        onClick={() => loadChatSession(chat.id)}
+                      <button
+                        onClick={() => setShowUploader(true)}
+                        className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
                       >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-secondary dark:text-dark-text truncate">
-                            {chat.title || 'Untitled Chat'}
-                          </p>
-                          <p className="text-xs text-accent dark:text-dark-muted">
-                            {chat.messageCount} messages • {new Date(chat.lastActivity).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <button
-                          onClick={(e) => handleDeleteChatSession(chat.id, e)}
-                          className="text-red-500 hover:text-red-700 p-1"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                    {getCustomerChats(selectedCustomer.id).length === 0 && (
-                      <p className="text-sm text-accent dark:text-dark-muted text-center py-4">
-                        No chat sessions yet
-                      </p>
-                    )}
-                  </div>
+                        Upload Documents
+                      </button>
+                    </div>
+                  )}
                 </div>
-
-                {/* Customer Info Section */}
-                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-                  <h3 className="font-medium text-secondary dark:text-dark-text mb-3 flex items-center gap-2">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
-                    </svg>
-                    Contact Information
-                  </h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-xs font-medium text-accent dark:text-dark-muted">Name</label>
-                      <p className="text-sm text-secondary dark:text-dark-text">{selectedCustomer.name}</p>
-                    </div>
-                    {selectedCustomer.company && (
-                      <div>
-                        <label className="text-xs font-medium text-accent dark:text-dark-muted">Company</label>
-                        <p className="text-sm text-secondary dark:text-dark-text">{selectedCustomer.company}</p>
-                      </div>
-                    )}
-                    {selectedCustomer.email && (
-                      <div>
-                        <label className="text-xs font-medium text-accent dark:text-dark-muted">Email</label>
-                        <p className="text-sm text-secondary dark:text-dark-text">{selectedCustomer.email}</p>
-                      </div>
-                    )}
-                    {selectedCustomer.phone && (
-                      <div>
-                        <label className="text-xs font-medium text-accent dark:text-dark-muted">Phone</label>
-                        <p className="text-sm text-secondary dark:text-dark-text">{selectedCustomer.phone}</p>
-                      </div>
-                    )}
-                    <div>
-                      <label className="text-xs font-medium text-accent dark:text-dark-muted">Status</label>
-                      <p className="text-sm text-secondary dark:text-dark-text capitalize">{selectedCustomer.status}</p>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-accent dark:text-dark-muted">Created</label>
-                      <p className="text-sm text-secondary dark:text-dark-text">
-                        {new Date(selectedCustomer.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
@@ -1575,8 +1888,8 @@ Please provide a detailed and helpful response based on both the comparison repo
                 <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
               </svg>
             }
-            title="Document Analysis"
-            description="Upload insurance documents and get instant AI-powered analysis with risk assessment and recommendations."
+            title="Document Comparison"
+            description="Upload insurance documents and get instant AI-powered comparison with risk assessment and recommendations."
             linkTo="/comparison"
             linkText="Start Analysis"
           />
@@ -1606,18 +1919,458 @@ Please provide a detailed and helpful response based on both the comparison repo
           />
         </div>
 
-        {/* Right side - Chat Interface */}
+        {/* Right side - Chat Interface or Customer Actions */}
         <div className="flex flex-col min-h-[500px]">
-          <ChatInterface 
-            onSendMessage={handleSendMessage}
-            messages={chatHistory}
-            isLoading={isLoading}
-            onCitationClick={handleCitationClick}
-            documents={documents.map(doc => ({ id: doc.id, name: doc.name }))}
-            citationMap={citationMap}
-          />
+          {selectedCustomer ? (
+            <div className="space-y-4">
+              {/* Selected Documents Info */}
+              {customerSelectedDocumentIds.length > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                    {customerSelectedDocumentIds.length} Document{customerSelectedDocumentIds.length !== 1 ? 's' : ''} Selected
+                  </h3>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {getSelectedCustomerDocuments().map(doc => (
+                      <span key={doc.id} className="px-2 py-1 bg-blue-100 dark:bg-blue-800 text-blue-800 dark:text-blue-200 text-xs rounded">
+                        {doc.name}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        // Navigate to comparison page with selected documents
+                        setSelectedDocumentIds(customerSelectedDocumentIds);
+                        window.location.href = '/comparison';
+                      }}
+                      className="px-3 py-2 bg-primary text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                    >
+                      Document Comparison
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Navigate to research page with selected documents
+                        setSelectedDocumentIds(customerSelectedDocumentIds);
+                        window.location.href = '/research';
+                      }}
+                      className="px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors"
+                    >
+                      Risk Assessment
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {/* Chat Interface */}
+              <ChatInterface 
+                onSendMessage={handleCustomerChatMessage}
+                messages={chatHistory}
+                isLoading={isLoading}
+                onCitationClick={handleCitationClick}
+                documents={getSelectedCustomerDocuments().map(doc => ({ id: doc.id, name: doc.name }))}
+                citationMap={citationMap}
+                onClearChat={handleClearChat}
+              />
+            </div>
+          ) : (
+            <ChatInterface 
+              onSendMessage={handleSendMessage}
+              messages={chatHistory}
+              isLoading={isLoading}
+              onCitationClick={handleCitationClick}
+              documents={documents.map(doc => ({ id: doc.id, name: doc.name }))}
+              citationMap={citationMap}
+              onClearChat={handleClearChat}
+            />
+          )}
         </div>
       </div>
+
+      {/* Contact Information Overlay */}
+      {showContactOverlay && selectedCustomer && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowContactOverlay(false)}
+        >
+          <div 
+            className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xl max-w-md w-full mx-4 p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-semibold text-secondary dark:text-dark-text flex items-center gap-2">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="text-primary">
+                  <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+                </svg>
+                Contact Information
+              </h3>
+              <button
+                onClick={() => setShowContactOverlay(false)}
+                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                <label className="text-sm font-medium text-accent dark:text-dark-muted">Name</label>
+                <p className="text-lg font-medium text-secondary dark:text-dark-text">{selectedCustomer.name}</p>
+              </div>
+              
+              {selectedCustomer.company && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <label className="text-sm font-medium text-accent dark:text-dark-muted">Company</label>
+                  <p className="text-lg font-medium text-secondary dark:text-dark-text">{selectedCustomer.company}</p>
+                </div>
+              )}
+              
+              {selectedCustomer.email && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <label className="text-sm font-medium text-accent dark:text-dark-muted">Email</label>
+                  <p className="text-lg font-medium text-secondary dark:text-dark-text">{selectedCustomer.email}</p>
+                </div>
+              )}
+              
+              {selectedCustomer.phone && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <label className="text-sm font-medium text-accent dark:text-dark-muted">Phone</label>
+                  <p className="text-lg font-medium text-secondary dark:text-dark-text">{selectedCustomer.phone}</p>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <label className="text-sm font-medium text-accent dark:text-dark-muted">Status</label>
+                  <p className="text-lg font-medium text-secondary dark:text-dark-text capitalize">{selectedCustomer.status}</p>
+                </div>
+                
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <label className="text-sm font-medium text-accent dark:text-dark-muted">Type</label>
+                  <p className="text-lg font-medium text-secondary dark:text-dark-text capitalize">{selectedCustomer.type}</p>
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                <label className="text-sm font-medium text-accent dark:text-dark-muted">Created</label>
+                <p className="text-lg font-medium text-secondary dark:text-dark-text">
+                  {new Date(selectedCustomer.createdAt).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </p>
+              </div>
+              
+              {selectedCustomer.lastContact && (
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+                  <label className="text-sm font-medium text-accent dark:text-dark-muted">Last Contact</label>
+                  <p className="text-lg font-medium text-secondary dark:text-dark-text">
+                    {new Date(selectedCustomer.lastContact).toLocaleDateString('en-US', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric'
+                    })}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowContactOverlay(false)}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Upload Modal */}
+      {showUploader && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-dark-surface rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-[#0e161b] dark:text-dark-text">Upload Documents for {selectedCustomer?.name || 'Customer'}</h3>
+              <button
+                onClick={() => setShowUploader(false)}
+                className="text-[#4e7a97] dark:text-dark-muted hover:text-[#0e161b] dark:hover:text-dark-text transition-colors"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+                </svg>
+              </button>
+            </div>
+            
+            <FileUploader onFilesUploaded={handleFilesUploaded} />
+          </div>
+        </div>
+      )}
+
+      {/* Document Upload Confirmation Modal */}
+      {showDocumentUploadModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-dark-surface rounded-lg p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-semibold text-secondary dark:text-dark-text">Document Details</h3>
+              <button
+                onClick={() => setShowDocumentUploadModal(false)}
+                className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">Document Name</label>
+                <input
+                  type="text"
+                  value={documentTitle}
+                  onChange={(e) => setDocumentTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text focus:ring-2 focus:ring-primary focus:border-primary"
+                  placeholder="Enter document name..."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">Policy Type</label>
+                <select
+                  value={documentPolicyType}
+                  onChange={(e) => setDocumentPolicyType(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text focus:ring-2 focus:ring-primary focus:border-primary"
+                >
+                  {policyTypes.map(type => (
+                    <option key={type.value} value={type.value}>
+                      {type.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setShowDocumentUploadModal(false)}
+                className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDocumentUploadConfirm}
+                className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Upload Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Viewer Overlay */}
+      {showDocumentViewer && viewingDocument && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowDocumentViewer(false)}
+        >
+          <div 
+            className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xl w-full h-full max-w-6xl max-h-[90vh] mx-4 my-4 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600 dark:text-green-400">
+                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-secondary dark:text-dark-text">
+                    {viewingDocument.name}
+                  </h3>
+                  <p className="text-sm text-accent dark:text-dark-muted">
+                    {viewingDocument.policyType || 'Unknown Type'} • {(viewingDocument.size / (1024 * 1024)).toFixed(2)} MB
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDocumentViewer(false)}
+                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Document Content */}
+            <div className="flex-1 p-4 overflow-hidden">
+              {(() => {
+                // Determine the best way to display the document
+                const hasFileUrl = viewingDocument.fileUrl;
+                const hasLocalFile = viewingDocument.file;
+                const hasExtractedText = viewingDocument.extractedText;
+                const isPdf = viewingDocument.type?.includes('pdf') || viewingDocument.name?.toLowerCase().endsWith('.pdf');
+                
+                console.log('📄 Document viewer state:', {
+                  name: viewingDocument.name,
+                  type: viewingDocument.type,
+                  isPdf,
+                  hasFileUrl,
+                  hasLocalFile,
+                  hasExtractedText,
+                  fileUrl: viewingDocument.fileUrl?.substring(0, 100) + '...'
+                });
+
+                // Use PDF viewer for PDF files
+                if (isPdf && (hasFileUrl || hasLocalFile)) {
+                  return (
+                    <PdfDocumentViewer
+                      document={{
+                        id: viewingDocument.id,
+                        name: viewingDocument.name,
+                        type: viewingDocument.type || 'application/pdf',
+                        fileUrl: viewingDocument.fileUrl,
+                        file: viewingDocument.file
+                      }}
+                      onError={(error) => {
+                        console.error('📄 PDF viewer error:', error);
+                      }}
+                    />
+                  );
+                }
+
+                // Fallback for non-PDF files or when PDF viewer fails
+                if (hasFileUrl || hasLocalFile) {
+                  const src = hasFileUrl ? viewingDocument.fileUrl : (hasLocalFile && viewingDocument.file ? URL.createObjectURL(viewingDocument.file) : '');
+                  return (
+                    <div className="w-full h-full">
+                      <iframe
+                        src={src}
+                        className="w-full h-full border border-gray-200 dark:border-gray-700 rounded-lg"
+                        title={viewingDocument.name}
+                        onLoad={() => {
+                          console.log('📄 Iframe loaded successfully');
+                        }}
+                        onError={() => {
+                          console.warn('📄 Iframe failed to load');
+                        }}
+                      />
+                      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        If the document doesn't load, try the download button below.
+                      </div>
+                    </div>
+                  );
+                }
+
+                // Final fallback - show extracted text and download option
+                return (
+                  <div className="flex items-center justify-center h-full">
+                    <div className="text-center max-w-2xl">
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-gray-400">
+                          <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-medium text-secondary dark:text-dark-text mb-2">
+                        Document Preview Unavailable
+                      </h3>
+                      <p className="text-accent dark:text-dark-muted mb-4">
+                        This document cannot be previewed in the browser. You can download it or view the extracted content below.
+                      </p>
+                      
+                      {/* Download Button */}
+                      {viewingDocument.id && (
+                        <button
+                          onClick={async () => {
+                            try {
+                              console.log('📄 Attempting to download document:', viewingDocument.id);
+                              const response = await fetch(`${API_BASE_URL}/documents/${viewingDocument.id}/download`, {
+                                headers: { 'Authorization': `Bearer ${token}` }
+                              });
+                              if (response.ok) {
+                                const data = await response.json();
+                                console.log('📄 Opening download URL:', data.downloadUrl);
+                                window.open(data.downloadUrl, '_blank');
+                              } else {
+                                console.error('📄 Download failed:', response.status, await response.text());
+                                alert('Failed to download document. Please try again.');
+                              }
+                            } catch (error) {
+                              console.error('📄 Download error:', error);
+                              alert('Error downloading document. Please check your connection.');
+                            }
+                          }}
+                          className="mb-6 px-6 py-3 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
+                        >
+                          📥 Download Document
+                        </button>
+                      )}
+
+                      {/* Extracted Text Content */}
+                      {hasExtractedText && (
+                        <div className="text-left">
+                          <h4 className="text-md font-medium text-secondary dark:text-dark-text mb-3">Document Content:</h4>
+                          <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg text-sm text-secondary dark:text-dark-text max-h-96 overflow-y-auto border">
+                            <pre className="whitespace-pre-wrap font-sans">
+                              {viewingDocument.extractedText && viewingDocument.extractedText.length > 2000 
+                                ? viewingDocument.extractedText.substring(0, 2000) + '\n\n... (content truncated, download full document to see more)'
+                                : viewingDocument.extractedText || 'No content available'
+                              }
+                            </pre>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Debug Info */}
+                      <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg text-xs text-left">
+                        <strong>Debug Info:</strong><br/>
+                        File Type: {viewingDocument.type || 'Unknown'}<br/>
+                        Is PDF: {isPdf ? 'Yes' : 'No'}<br/>
+                        File URL: {viewingDocument.fileUrl ? 'Available' : 'Not available'}<br/>
+                        Local File: {viewingDocument.file ? 'Available' : 'Not available'}<br/>
+                        Extracted Text: {hasExtractedText && viewingDocument.extractedText ? `${viewingDocument.extractedText.length} characters` : 'Not available'}<br/>
+                        Document ID: {viewingDocument.id || 'Not available'}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+            
+            {/* Footer */}
+            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-dark-border">
+              <div className="text-sm text-accent dark:text-dark-muted">
+                Uploaded: {new Date(viewingDocument.uploadedAt).toLocaleDateString()}
+              </div>
+              <div className="flex gap-2">
+                {(viewingDocument.fileUrl || viewingDocument.file) && (
+                  <a
+                    href={viewingDocument.fileUrl || (viewingDocument.file ? URL.createObjectURL(viewingDocument.file) : '#')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-secondary dark:text-dark-text text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Open in New Tab
+                  </a>
+                )}
+                <button
+                  onClick={() => setShowDocumentViewer(false)}
+                  className="px-3 py-2 bg-primary text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
