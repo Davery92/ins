@@ -10,6 +10,7 @@ const auth_1 = require("../middleware/auth");
 const checkLicense_1 = require("../middleware/checkLicense");
 const models_1 = require("../models");
 const fileStorage_1 = require("../services/fileStorage");
+const pdfUtils_1 = require("../utils/pdfUtils");
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
 // POST /api/documents/extract - extract full text from uploaded PDF
@@ -21,7 +22,8 @@ router.post('/extract', auth_1.authenticateToken, checkLicense_1.checkLicense, u
         }
         const pdfBuffer = req.file.buffer;
         const data = await (0, pdf_parse_1.default)(pdfBuffer);
-        res.json({ text: data.text });
+        const spans = await (0, pdfUtils_1.extractWordSpans)(pdfBuffer);
+        res.json({ text: data.text, spans });
         return;
     }
     catch (error) {
@@ -78,6 +80,22 @@ router.post('/', auth_1.authenticateToken, checkLicense_1.checkLicense, upload.s
             const data = await (0, pdf_parse_1.default)(buffer);
             extractedText = data.text;
             await doc.update({ extractedText, status: 'completed' });
+            // Extract word spans and persist to database
+            try {
+                const spans = await (0, pdfUtils_1.extractWordSpans)(buffer);
+                const spanRecords = spans.map(span => ({
+                    documentId: doc.id,
+                    pageNumber: span.page,
+                    text: span.text,
+                    bbox: span.bbox,
+                    startOffset: span.startOffset,
+                    endOffset: span.endOffset,
+                }));
+                await models_1.DocumentWordSpanModel.bulkCreate(spanRecords);
+            }
+            catch (spanError) {
+                console.error('Span extraction or persistence failed:', spanError);
+            }
         }
         catch (error) {
             console.error('Text extraction failed:', error);
@@ -142,6 +160,30 @@ router.delete('/:id', auth_1.authenticateToken, checkLicense_1.checkLicense, asy
     catch (error) {
         console.error('Document delete error:', error);
         res.status(500).json({ error: 'Failed to delete document' });
+        return;
+    }
+});
+// GET /api/documents/:id/spans - fetch word spans for a document
+router.get('/:id/spans', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { id } = req.params;
+        // First verify the user owns this document
+        const doc = await models_1.PolicyDocumentModel.findOne({ where: { id, userId } });
+        if (!doc) {
+            res.status(404).json({ error: 'Document not found' });
+            return;
+        }
+        const spans = await models_1.DocumentWordSpanModel.findAll({
+            where: { documentId: id },
+            order: [['pageNumber', 'ASC'], ['startOffset', 'ASC']],
+        });
+        res.json(spans);
+        return;
+    }
+    catch (error) {
+        console.error('Error fetching spans:', error);
+        res.status(500).json({ error: 'Failed to fetch spans' });
         return;
     }
 });

@@ -297,6 +297,58 @@ PolicyDocumentModel.init({
   ]
 });
 
+// Document Word Span Model
+export class DocumentWordSpanModel extends Model {
+  public id!: string;
+  public documentId!: string;
+  public pageNumber!: number;
+  public text!: string;
+  public bbox!: object;
+  public startOffset!: number;
+  public endOffset!: number;
+  public readonly createdAt!: Date;
+  public readonly updatedAt!: Date;
+}
+
+DocumentWordSpanModel.init({
+  id: {
+    type: DataTypes.UUID,
+    defaultValue: DataTypes.UUIDV4,
+    primaryKey: true,
+  },
+  documentId: {
+    type: DataTypes.UUID,
+    allowNull: false,
+    references: { model: PolicyDocumentModel, key: 'id' },
+    onDelete: 'CASCADE',
+  },
+  pageNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  text: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+  },
+  bbox: {
+    type: DataTypes.JSONB,
+    allowNull: false,
+  },
+  startOffset: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  endOffset: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+}, {
+  sequelize,
+  modelName: 'DocumentWordSpan',
+  tableName: 'document_word_spans',
+  timestamps: true,
+});
+
 // Customer Model
 export class CustomerModel extends Model {
   public id!: string;
@@ -628,6 +680,10 @@ UnderwritingReportModel.belongsTo(CustomerModel, {
   foreignKey: 'customerId',
   as: 'customer'
 });
+
+// After existing associations for PolicyDocumentModel:
+PolicyDocumentModel.hasMany(DocumentWordSpanModel, { foreignKey: 'documentId', as: 'wordSpans' });
+DocumentWordSpanModel.belongsTo(PolicyDocumentModel, { foreignKey: 'documentId', as: 'document' });
 
 // Initialize database
 export const initDatabase = async (): Promise<void> => {

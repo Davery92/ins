@@ -29,7 +29,7 @@ export class ChatContextService {
    */
   public buildFullContext(context: ChatContext): {
     conversationHistory: Array<{content: string, sender: 'user' | 'ai', timestamp: Date}>;
-    documents: Array<{name: string, extractedText?: string}>;
+    documents: Array<{id: string, name: string, extractedText?: string}>;
     policyType?: string;
   } {
     const conversationHistory = context.messages.map(msg => ({
@@ -39,6 +39,7 @@ export class ChatContextService {
     }));
 
     const documents = context.documents.map(doc => ({
+      id: doc.id,
       name: doc.name,
       extractedText: doc.extractedText
     }));

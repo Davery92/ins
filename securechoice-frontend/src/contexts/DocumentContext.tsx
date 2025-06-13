@@ -13,6 +13,7 @@ export interface PolicyDocument extends UploadedFile {
   summary?: string;
   keyTerms?: string[];
   policyType?: string;
+  fileUrl?: string;
 }
 
 interface DocumentContextType {

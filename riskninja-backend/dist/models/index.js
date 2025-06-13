@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.initDatabase = exports.ComparisonReportModel = exports.ChatSessionModel = exports.CustomerModel = exports.PolicyDocumentModel = exports.ChatMessageModel = exports.UserModel = exports.CompanyModel = exports.sequelize = void 0;
+exports.initDatabase = exports.UnderwritingReportModel = exports.ComparisonReportModel = exports.ChatSessionModel = exports.CustomerModel = exports.DocumentWordSpanModel = exports.PolicyDocumentModel = exports.ChatMessageModel = exports.UserModel = exports.CompanyModel = exports.sequelize = void 0;
 const sequelize_1 = require("sequelize");
 // Use DATABASE_URL for PostgreSQL connection
 const databaseUrl = process.env.DATABASE_URL || 'postgres://riskninja_user:riskninja_password@localhost:5432/riskninja_db';
@@ -246,6 +246,48 @@ PolicyDocumentModel.init({
         { unique: true, fields: ['userId', 'name'], name: 'user_document_name' }
     ]
 });
+// Document Word Span Model
+class DocumentWordSpanModel extends sequelize_1.Model {
+}
+exports.DocumentWordSpanModel = DocumentWordSpanModel;
+DocumentWordSpanModel.init({
+    id: {
+        type: sequelize_1.DataTypes.UUID,
+        defaultValue: sequelize_1.DataTypes.UUIDV4,
+        primaryKey: true,
+    },
+    documentId: {
+        type: sequelize_1.DataTypes.UUID,
+        allowNull: false,
+        references: { model: PolicyDocumentModel, key: 'id' },
+        onDelete: 'CASCADE',
+    },
+    pageNumber: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
+    text: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: false,
+    },
+    bbox: {
+        type: sequelize_1.DataTypes.JSONB,
+        allowNull: false,
+    },
+    startOffset: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
+    endOffset: {
+        type: sequelize_1.DataTypes.INTEGER,
+        allowNull: false,
+    },
+}, {
+    sequelize: exports.sequelize,
+    modelName: 'DocumentWordSpan',
+    tableName: 'document_word_spans',
+    timestamps: true,
+});
 // Customer Model
 class CustomerModel extends sequelize_1.Model {
 }
@@ -386,6 +428,46 @@ ComparisonReportModel.init({
     tableName: 'comparison_reports',
     timestamps: true,
 });
+// Underwriting Report Model
+class UnderwritingReportModel extends sequelize_1.Model {
+}
+exports.UnderwritingReportModel = UnderwritingReportModel;
+UnderwritingReportModel.init({
+    id: {
+        type: sequelize_1.DataTypes.UUID,
+        defaultValue: sequelize_1.DataTypes.UUIDV4,
+        primaryKey: true,
+    },
+    userId: {
+        type: sequelize_1.DataTypes.UUID,
+        allowNull: false,
+        references: {
+            model: UserModel,
+            key: 'id',
+        },
+    },
+    customerId: {
+        type: sequelize_1.DataTypes.UUID,
+        allowNull: false,
+        references: {
+            model: CustomerModel,
+            key: 'id',
+        },
+    },
+    title: {
+        type: sequelize_1.DataTypes.STRING,
+        allowNull: false,
+    },
+    content: {
+        type: sequelize_1.DataTypes.TEXT,
+        allowNull: false,
+    },
+}, {
+    sequelize: exports.sequelize,
+    modelName: 'UnderwritingReport',
+    tableName: 'underwriting_reports',
+    timestamps: true,
+});
 // Establish associations
 CompanyModel.hasMany(UserModel, {
     foreignKey: 'companyId',
@@ -464,6 +546,26 @@ ComparisonReportModel.belongsTo(UserModel, {
     foreignKey: 'userId',
     as: 'user'
 });
+// Underwriting report associations
+UserModel.hasMany(UnderwritingReportModel, {
+    foreignKey: 'userId',
+    as: 'underwritingReports'
+});
+UnderwritingReportModel.belongsTo(UserModel, {
+    foreignKey: 'userId',
+    as: 'user'
+});
+CustomerModel.hasMany(UnderwritingReportModel, {
+    foreignKey: 'customerId',
+    as: 'underwritingReports'
+});
+UnderwritingReportModel.belongsTo(CustomerModel, {
+    foreignKey: 'customerId',
+    as: 'customer'
+});
+// After existing associations for PolicyDocumentModel:
+PolicyDocumentModel.hasMany(DocumentWordSpanModel, { foreignKey: 'documentId', as: 'wordSpans' });
+DocumentWordSpanModel.belongsTo(PolicyDocumentModel, { foreignKey: 'documentId', as: 'document' });
 // Initialize database
 const initDatabase = async () => {
     try {

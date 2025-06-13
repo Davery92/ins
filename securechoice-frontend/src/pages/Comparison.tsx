@@ -5,10 +5,12 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
-import ChatInterface, { ChatMessage } from '../components/ChatInterface';
+import ChatInterface, { ChatMessage, CitationClick } from '../components/ChatInterface';
+import PdfViewer, { CitationHighlight } from '../components/PdfViewer';
 import { useDocuments } from '../contexts/DocumentContext';
 import { useAuth } from '../contexts/AuthContext';
 import { aiService } from '../services/aiService';
+import { spansToPrompt } from '../utils/spansToPrompt';
 import html2pdf from 'html2pdf.js';
 
 type WizardStep = 'document-selection' | 'additional-facts' | 'generating-report' | 'view-report';
@@ -40,6 +42,8 @@ const Comparison: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const reportContentRef = useRef<HTMLDivElement>(null);
+  const [clickedCitation, setClickedCitation] = useState<CitationClick | null>(null);
+  const [highlight, setHighlight] = useState<CitationHighlight | null>(null);
 
   // Initialize selected documents from context
   useEffect(() => {
@@ -316,6 +320,17 @@ const Comparison: React.FC = () => {
     // Get selected documents for context - handle case where documents might not be available
     const selectedDocuments = documents.filter(doc => selectedDocs.includes(doc.id));
     
+    // Build spans context for selected documents
+    const spanBlocks = await Promise.all(
+      selectedDocuments.map(async doc => {
+        const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/spans`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const spans = res.ok ? await res.json() : [];
+        return spansToPrompt(doc.id, spans);
+      })
+    );
+    const docContext = spanBlocks.join('\n\n');
     // Create comprehensive context with both the report AND the original documents (if available)
     let contextualPrompt = '';
     
@@ -325,8 +340,10 @@ const Comparison: React.FC = () => {
 ${doc.extractedText || 'Unable to extract text from this document.'}`
       ).join('\n\n---\n\n');
 
-      contextualPrompt = `
-Based on the following comparison report, original documents, and user question, provide a helpful response:
+      contextualPrompt = `Based on the following comparison report, original documents (with span metadata), and user question, provide a helpful response:
+
+DOCUMENT SPANS:
+${docContext}
 
 COMPARISON REPORT:
 ${comparisonReport}
@@ -336,19 +353,18 @@ ${documentTexts}
 
 USER QUESTION: ${message}
 
-Please provide a detailed and helpful response based on both the comparison report and the original document content. You can reference specific details from either the report or the original documents as needed.
+Please provide a detailed and helpful response based on both the comparison report and the original document content.
 `;
     } else {
       // Fallback when documents are not available - use report only
-      contextualPrompt = `
-Based on the following comparison report and user question, provide a helpful response:
+      contextualPrompt = `Based on the following comparison report and user question, provide a helpful response (no original documents available):
 
 COMPARISON REPORT:
 ${comparisonReport}
 
 USER QUESTION: ${message}
 
-Please provide a detailed and helpful response based on the comparison report content. Note that the original policy documents are not currently available for reference, so please base your response primarily on the information contained in the comparison report above.
+Please provide a detailed and helpful response based on the comparison report content.
 `;
     }
 
@@ -518,6 +534,41 @@ Please provide a detailed and helpful response based on the comparison report co
     }
   };
 
+  const handleCitationClick = async (citation: CitationClick) => {
+    setClickedCitation(citation);
+    try {
+      // First, get fresh download URL for the document
+      const urlResponse = await fetch(`${API_BASE_URL}/documents/${citation.docId}/download`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (urlResponse.ok) {
+        const { downloadUrl } = await urlResponse.json();
+        
+        // Update the document in our local state with the fresh URL
+        const updatedDocuments = documents.map(doc => 
+          doc.id === citation.docId ? { ...doc, fileUrl: downloadUrl } : doc
+        );
+        addDocuments(updatedDocuments.filter(doc => !documents.find(d => d.id === doc.id)));
+      }
+      
+      // Then fetch spans for highlighting
+      const spansResponse = await fetch(`${API_BASE_URL}/documents/${citation.docId}/spans`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (spansResponse.ok) {
+        const spans: Array<{ pageNumber: number; bbox: [number, number, number, number]; startOffset: number; endOffset: number }> = await spansResponse.json();
+        const match = spans.find(s => s.pageNumber === citation.page && s.startOffset === citation.start && s.endOffset === citation.end);
+        if (match) {
+          setHighlight({ page: citation.page, bbox: match.bbox });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch citation data:', err);
+    }
+  };
+
   const renderViewReport = () => {
     console.log('🎨 Rendering view-report case');
     return (
@@ -633,6 +684,8 @@ Please provide a detailed and helpful response based on the comparison report co
                 messages={chatHistory}
                 onSendMessage={handleSendChatMessage}
                 isLoading={false}
+                onCitationClick={handleCitationClick}
+                documents={documents.map(doc => ({id: doc.id, name: doc.name}))}
               />
             </div>
           </div>
@@ -668,6 +721,15 @@ Please provide a detailed and helpful response based on the comparison report co
           <div
             className="fixed inset-0 z-40"
             onClick={() => setShowExportMenu(false)}
+          />
+        )}
+
+        {/* PdfViewer modal for citation highlight */}
+        {highlight && clickedCitation && (
+          <PdfViewer
+            fileUrl={documents.find(doc => doc.id === clickedCitation.docId)?.fileUrl || ''}
+            highlight={highlight}
+            onClose={() => { setClickedCitation(null); setHighlight(null); }}
           />
         )}
       </div>

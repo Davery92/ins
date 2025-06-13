@@ -19,23 +19,23 @@ import {
 export const getAnalysisPrompt = (policyType: string): ((documents: string[]) => string) => {
   switch (policyType) {
     case 'general-liability':
-      return generalLiabilityPrompt;
+      return (docs: string[]) => generalLiabilityPrompt(docs);
     case 'professional-liability':
-      return professionalLiabilityPrompt;
+      return (docs: string[]) => professionalLiabilityPrompt(docs);
     case 'workers-comp':
-      return workersCompPrompt;
+      return (docs: string[]) => workersCompPrompt(docs);
     case 'commercial-auto':
-      return commercialAutoPrompt;
+      return (docs: string[]) => commercialAutoPrompt(docs);
     case 'property':
-      return propertyPrompt;
+      return (docs: string[]) => propertyPrompt(docs);
     case 'cyber-liability':
-      return cyberLiabilityPrompt;
+      return (docs: string[]) => cyberLiabilityPrompt(docs);
     case 'environmental-liability':
-      return environmentalLiabilityPrompt;
+      return (docs: string[]) => environmentalLiabilityPrompt(docs);
     case 'directors-officers':
-      return directorsOfficersPrompt;
+      return (docs: string[]) => directorsOfficersPrompt(docs);
     case 'epl':
-      return eplPrompt;
+      return (docs: string[]) => eplPrompt(docs);
     default:
       // Fallback to generic document analysis prompt (adapt to documents array)
       return (documents: string[]) => documentAnalysisPrompt(documents.join(', '));
@@ -47,29 +47,29 @@ export const getComparisonPrompt = (policyType: string): ((documents: string[]) 
   switch (policyType) {
     case 'general-liability':
     case 'professional-liability':
-      return compareLiabilityprompt;
+      return (docs: string[]) => compareLiabilityprompt(docs);
     case 'workers-comp':
       // TODO: Add compareWorkersprompt when available
-      return compareLiabilityprompt; // Fallback for now
+      return (docs: string[]) => compareLiabilityprompt(docs); // Fallback for now
     case 'commercial-auto':
       // TODO: Add compareAutoprompt when available
-      return compareLiabilityprompt; // Fallback for now
+      return (docs: string[]) => compareLiabilityprompt(docs); // Fallback for now
     case 'property':
-      return comparePropertyprompt;
+      return (docs: string[]) => comparePropertyprompt(docs);
     case 'cyber-liability':
-      return compareCyberprompt;
+      return (docs: string[]) => compareCyberprompt(docs);
     case 'environmental-liability':
       // TODO: Add compareEnvironmentalprompt when available
-      return compareLiabilityprompt; // Fallback for now
+      return (docs: string[]) => compareLiabilityprompt(docs); // Fallback for now
     case 'directors-officers':
       // TODO: Add compareDirectorsprompt when available
-      return compareLiabilityprompt; // Fallback for now
+      return (docs: string[]) => compareLiabilityprompt(docs); // Fallback for now
     case 'epl':
       // TODO: Add compareeplPrompt when available
-      return compareLiabilityprompt; // Fallback for now
+      return (docs: string[]) => compareLiabilityprompt(docs); // Fallback for now
     default:
       // Fallback to liability comparison prompt
-      return compareLiabilityprompt;
+      return (docs: string[]) => compareLiabilityprompt(docs);
   }
 };
 

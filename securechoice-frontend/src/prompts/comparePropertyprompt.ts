@@ -15,14 +15,14 @@ export const comparePropertyprompt = (documents: string[]) => `
 |--------|-------------------|----------------------|----------------------|
 | Property Insurance | • Policy structure<br>• Coverage grants<br>• Exclusions<br>• Endorsements | • Premium calculation<br>• Claims procedures | • Historical context<br>• Market standards |
 | Risk Management | • Coverage adequacy<br>• Exposure identification | • Risk transfer mechanisms<br>• Program structure | • Organizational risk appetite |
-| Documentation | • Citation methodology<br>• Evidence collection | • Version control<br>• Source verification | • Information hierarchy |
+| Documentation | • Evidence collection<br>• Source verification | • Version control<br>• Information organization | • Report structure |
 
 ## 3. ANALYTICAL METHODOLOGY
 
 **Primary Approach: Real-Time Comparative Analysis**
 *   Implement immediate side-by-side examination of equivalent policy elements
 *   Apply rapid assessment of materiality for each difference
-*   Utilize direct language citation to substantiate key variances
+*   Use direct language quotes to substantiate key variances
 *   Employ confidence rating system (1-5 scale) to indicate certainty level
 
 **Supporting Methodologies:**
@@ -38,14 +38,13 @@ export const comparePropertyprompt = (documents: string[]) => `
 
 **Information Organization Schema:**
 *   Standardized section ordering following typical property policy structure
-*   Direct citation of key policy language differences
 *   Immediate flagging of material variations
 *   Real-time categorization of significance
 
 ## 5. PROJECT OVERVIEW
 
 **Executive Summary (TLDR):**
-This real-time AI-assisted analysis will instantly deliver a comprehensive property insurance policy comparison that systematically identifies all material differences between documents, provides supporting evidence with key policy language citations, and enables immediate risk management decision-making.
+This real-time AI-assisted analysis will instantly deliver a comprehensive property insurance policy comparison that systematically identifies all material differences between documents, provides supporting evidence with key policy language quotes, and enables immediate risk management decision-making.
 
 **Ultra-Rapid Workflow:**
 User Document Input → Immediate AI Element Extraction →
@@ -85,7 +84,6 @@ Rapid Matrix Generation → Immediate Review and Finalization
 *   Format: Instantly-generated structured table with policy elements as rows, documents as columns
 *   Content: Side-by-side presentation of critical policy provisions
 *   Differentiation: Immediate highlighting of material differences
-*   Citation: Direct references to key policy language
 *   Confidence: 1-5 scale rating for rapid assessment
 
 **Executive Summary:**
@@ -169,4 +167,6 @@ Rapid Matrix Generation → Immediate Review and Finalization
     *   Real-time user review
     *   Instant refinement based on feedback
     *   Immediate delivery of completed analysis
-    `;
+
+**IMPORTANT:** When presenting your comparison results, provide clear evidence for every factual statement by referencing specific policy language from the document sections.
+`;

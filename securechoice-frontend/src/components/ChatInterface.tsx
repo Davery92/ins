@@ -5,6 +5,224 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 
+// Regex to find citations in the format [CITATION:doc_id,page,start,end]
+// Accepts optional 'doc_id:' or 'doc_id=' prefix, optional literal 'page,' and ignores any additional parameters
+const citationRegex = /\[CITATION:\s*(?:doc_id[:=])?\s*([^,]+?)\s*,\s*(?:page\s*,\s*)?(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,.*)?\]/gi;
+// Regex to find comparison citations in the format Citation: "text"
+const comparisonCitationRegex = /Citation:\s*"([^"]+)"/g;
+// Regex to find numbered citations [1], [2], [3], etc.
+const numberedCitationRegex = /\[(\d+)\]/g;
+
+export interface CitationClick {
+  docId: string;
+  page: number;
+  start: number;
+  end: number;
+  index: number;
+}
+
+// Interface for span data used in citation mapping
+interface SpanData {
+  docId: string;
+  pageNumber: number;
+  startOffset: number;
+  endOffset: number;
+  text: string;
+}
+
+// Extract span data from AI response context (when spans were included in the prompt)
+function extractSpansFromContext(text: string): SpanData[] {
+  const spans: SpanData[] = [];
+  const spanRegex = /\[CITATION:([^,]+),(\d+),(\d+),(\d+)\]\n([^\n]+)/g;
+  let match;
+  
+  while ((match = spanRegex.exec(text)) !== null) {
+    const [, docId, page, start, end, spanText] = match;
+    spans.push({
+      docId: docId.trim(),
+      pageNumber: Number(page),
+      startOffset: Number(start),
+      endOffset: Number(end),
+      text: spanText.trim()
+    });
+  }
+  
+  return spans;
+}
+
+// Render content with clickable citations
+function renderContentWithCitations(
+  text: string,
+  onCitationClick?: (c: CitationClick) => void,
+  documents?: Array<{id: string, name: string}>,
+  citationMap?: SpanData[] // Ordered list of spans for numbered citations
+): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let count = 1;
+  
+  // Find all citations and create citation data
+  const citations: Array<{
+    match: RegExpExecArray;
+    citationData: CitationClick | null;
+    type: 'standard' | 'comparison' | 'numbered';
+  }> = [];
+  
+  // Find numbered citations [1], [2], [3], etc.
+  let match: RegExpExecArray | null;
+  const numberedRegex = new RegExp(numberedCitationRegex.source, numberedCitationRegex.flags);
+  
+  while ((match = numberedRegex.exec(text)) !== null) {
+    const citationNumber = Number(match[1]);
+    
+    // Map numbered citation to span data (1-indexed)
+    const spanIndex = citationNumber - 1;
+    const spanData = citationMap?.[spanIndex];
+    
+    if (spanData) {
+      citations.push({
+        match,
+        citationData: {
+          docId: spanData.docId,
+          page: spanData.pageNumber,
+          start: spanData.startOffset,
+          end: spanData.endOffset,
+          index: citationNumber
+        },
+        type: 'numbered'
+      });
+    } else {
+      // Fallback for numbered citations without span data
+      citations.push({
+        match,
+        citationData: null,
+        type: 'numbered'
+      });
+    }
+  }
+  
+  // Find standard citations [CITATION:doc_id,page,start,end]
+  const standardRegex = new RegExp(citationRegex.source, citationRegex.flags);
+  
+  while ((match = standardRegex.exec(text)) !== null) {
+    const [, docIdOrName, page, start, end] = match;
+    
+    // Try to resolve document name to ID if documents array is provided
+    let actualDocId = docIdOrName.trim();
+    if (documents) {
+      // Exact match first
+      let foundDoc = documents.find(
+        doc => doc.id === actualDocId || doc.name === actualDocId
+      );
+      if (!foundDoc) {
+        // Fuzzy match on name fragments (strip non-alphanumerics)
+        const key = actualDocId.replace(/\W/g, '').toLowerCase();
+        foundDoc = documents.find(d => {
+          const cleanName = d.name.replace(/\W/g, '').toLowerCase();
+          return cleanName.includes(key) || key.includes(cleanName);
+        });
+      }
+      if (foundDoc) {
+        actualDocId = foundDoc.id;
+      }
+    }
+    
+    citations.push({
+      match,
+      citationData: {
+        docId: actualDocId,
+        page: Number(page),
+        start: Number(start),
+        end: Number(end),
+        index: count
+      },
+      type: 'standard'
+    });
+    count++;
+  }
+  
+  // Find comparison citations Citation: "text"
+  const comparisonRegex = new RegExp(comparisonCitationRegex.source, comparisonCitationRegex.flags);
+  
+  while ((match = comparisonRegex.exec(text)) !== null) {
+    citations.push({
+      match,
+      citationData: null, // No specific location data for comparison citations
+      type: 'comparison'
+    });
+    count++;
+  }
+  
+  // Sort citations by their position in the text
+  citations.sort((a, b) => a.match.index! - b.match.index!);
+  
+  // Now render the content with citations
+  count = 1;
+  for (const { match, citationData, type } of citations) {
+    const idx = match.index!;
+    const full = match[0];
+    
+    // Add preceding text
+    if (idx > lastIndex) {
+      parts.push(
+        <ReactMarkdown 
+          key={`text-${lastIndex}-${idx}`}
+          remarkPlugins={[remarkGfm]} 
+          rehypePlugins={[rehypeHighlight, rehypeKatex]}
+        >
+          {text.slice(lastIndex, idx)}
+        </ReactMarkdown>
+      );
+    }
+    
+    // Add clickable citation
+    if ((type === 'standard' || type === 'numbered') && citationData && onCitationClick) {
+      const displayNumber = type === 'numbered' ? citationData.index : count;
+      parts.push(
+        <button
+          key={`citation-${count}`}
+          className="text-primary underline hover:text-blue-600 transition-colors mx-1"
+          onClick={() => onCitationClick(citationData)}
+        >
+          [{displayNumber}]
+        </button>
+      );
+    } else {
+      // For comparison citations or when no click handler, just show as text
+      const displayNumber = type === 'numbered' ? Number(match[1]) : count;
+      parts.push(
+        <span
+          key={`citation-${count}`}
+          className="text-primary font-medium mx-1"
+        >
+          [{displayNumber}]
+        </span>
+      );
+    }
+    
+    // Only increment count for non-numbered citations
+    if (type !== 'numbered') {
+      count++;
+    }
+    lastIndex = idx + full.length;
+  }
+  
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(
+      <ReactMarkdown 
+        key={`text-${lastIndex}-end`}
+        remarkPlugins={[remarkGfm]} 
+        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+      >
+        {text.slice(lastIndex)}
+      </ReactMarkdown>
+    );
+  }
+  
+  return <>{parts}</>;
+}
+
 export interface ChatMessage {
   id: string;
   content: string;
@@ -17,14 +235,20 @@ interface ChatInterfaceProps {
   onSendMessage: (message: string) => void;
   messages: ChatMessage[];
   isLoading?: boolean;
+  onCitationClick?: (c: CitationClick) => void;
   className?: string;
+  documents?: Array<{id: string, name: string}>;
+  citationMap?: SpanData[]; // Ordered list of spans corresponding to [1], [2], [3], etc.
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onSendMessage,
   messages,
   isLoading = false,
-  className = ''
+  className = '',
+  onCitationClick,
+  documents,
+  citationMap
 }) => {
   const [inputMessage, setInputMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -132,12 +356,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   )}
                   <div className="text-sm leading-relaxed">
                     <div className="overflow-x-auto markdown-content">
-                      <ReactMarkdown 
-                        remarkPlugins={[remarkGfm]}
-                        rehypePlugins={[rehypeHighlight, rehypeKatex]}
-                      >
-                        {message.content}
-                      </ReactMarkdown>
+                      {renderContentWithCitations(message.content, onCitationClick, documents, citationMap)}
                     </div>
                     {message.isStreaming && (
                       <span className="inline-block w-2 h-4 bg-current ml-1 animate-pulse"></span>

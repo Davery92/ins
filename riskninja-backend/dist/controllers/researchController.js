@@ -1,18 +1,12 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateResearchReport = void 0;
-const axios_1 = __importDefault(require("axios"));
 const aiService_1 = require("../services/aiService");
-const pdfGenerator_1 = require("../services/pdfGenerator");
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const Crawler = require('simplecrawler');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const cheerio = require('cheerio');
 const html_to_text_1 = require("html-to-text");
-const paretoprompt_1 = require("./paretoprompt");
 const tiktoken_1 = require("@dqbd/tiktoken");
 // Function to optimize and truncate content to fit token limits
 const optimizeContent = (content, maxTokens = 800000) => {
@@ -51,115 +45,234 @@ const optimizeContent = (content, maxTokens = 800000) => {
         encoder.free();
     }
 };
+// Function to find specific pages (services, about, contact, home)
+const findTargetPages = async (baseUrl) => {
+    return new Promise((resolve, reject) => {
+        const crawler = new Crawler(baseUrl);
+        crawler.maxDepth = 2; // Go a bit deeper to find target pages
+        crawler.maxConcurrency = 3;
+        const targetPages = [];
+        let pageCount = 0;
+        const maxPages = 20; // Increased to find target pages
+        // Define target page patterns
+        const targetPatterns = {
+            home: /^(\/|\/home|\/index|\/main)?(\?.*)?$/i,
+            about: /\/(about|company|who-we-are|our-company|mission|vision|team)/i,
+            services: /\/(services|solutions|products|offerings|what-we-do|capabilities)/i,
+            contact: /\/(contact|get-in-touch|reach-us|contact-us|support)/i
+        };
+        // Safety guard: stop after 20 seconds
+        const crawlTimeout = setTimeout(() => {
+            crawler.stop();
+            resolve(targetPages);
+        }, 20 * 1000);
+        crawler.on('fetchcomplete', (queueItem, data) => {
+            pageCount++;
+            const url = queueItem.url;
+            const urlPath = new URL(url).pathname;
+            // Determine page type
+            let pageType = 'other';
+            for (const [type, pattern] of Object.entries(targetPatterns)) {
+                if (pattern.test(urlPath)) {
+                    pageType = type;
+                    break;
+                }
+            }
+            // Always include home page and target pages
+            if (pageType !== 'other' || url === baseUrl || urlPath === '/' || urlPath === '') {
+                targetPages.push({
+                    url,
+                    html: data.toString(),
+                    pageType: pageType === 'other' ? 'home' : pageType
+                });
+                console.log(`Found target page: ${pageType} - ${url}`);
+            }
+            // Stop crawling if we've reached the page limit
+            if (pageCount >= maxPages) {
+                crawler.stop();
+                resolve(targetPages);
+            }
+        });
+        crawler.on('complete', () => {
+            clearTimeout(crawlTimeout);
+            resolve(targetPages);
+        });
+        ['fetcherror', 'fetchtimeout', 'fetchclienterror'].forEach(evt => crawler.on(evt, () => { }));
+        crawler.start();
+    });
+};
+// Underwriting prompt function
+const getUnderwritingPrompt = (scrapedContent, additionalText, documentContent, companyUrl) => {
+    const companyName = new URL(companyUrl).hostname.replace(/^www\./, '').replace(/\..+$/, '');
+    return `
+# UNDERWRITING RESEARCH AND ANALYSIS REQUEST
+
+## OBJECTIVE
+Conduct a comprehensive underwriting analysis of ${companyName} following the systematic framework for identifying critical risk factors that generate maximum functional understanding for underwriting decisions.
+
+## ENTITY INFORMATION
+**Company:** ${companyName}
+**Website:** ${companyUrl}
+
+## AVAILABLE DATA SOURCES
+
+### SCRAPED WEBSITE CONTENT
+${scrapedContent}
+
+### ADDITIONAL CONTEXT PROVIDED
+${additionalText || 'No additional context provided'}
+
+### SUPPORTING DOCUMENTS
+${documentContent || 'No supporting documents provided'}
+
+## ANALYSIS REQUIREMENTS
+
+Based on the underwriting framework, please provide a comprehensive analysis that includes:
+
+### 1. ENTITY OVERVIEW
+- Core business operations and activities
+- Industry classification and market position
+- Key business model characteristics
+- Geographic scope of operations
+
+### 2. CRITICAL RISK IDENTIFICATION (The Vital 20%)
+Identify and analyze the critical 20% of risk factors that will drive 80% of the underwriting decision:
+- **Primary Risk Exposures:** Most significant sources of potential loss
+- **Secondary Risk Factors:** Supporting risks that could amplify primary exposures
+- **Operational Risk Indicators:** Day-to-day business risks
+- **Financial Risk Signals:** Revenue stability, cash flow, growth patterns
+- **Regulatory/Compliance Risks:** Industry-specific regulatory requirements
+
+### 3. RISK DENSITY ANALYSIS
+For each identified critical risk:
+- **Severity Potential:** Maximum possible impact
+- **Frequency Likelihood:** Probability of occurrence
+- **Control Environment:** Existing risk management practices
+- **Trend Analysis:** Whether risks are increasing, stable, or decreasing
+
+### 4. UNDERWRITING IMPLICATIONS
+- **Coverage Recommendations:** Types of insurance coverage most relevant
+- **Coverage Limits:** Suggested coverage amounts based on exposure analysis
+- **Deductible Considerations:** Appropriate retention levels
+- **Exclusions/Restrictions:** Areas requiring special attention or limitations
+- **Premium Considerations:** Factors that would influence pricing
+
+### 5. RED FLAGS AND CONCERNS
+- **Immediate Concerns:** Issues requiring immediate attention
+- **Emerging Risks:** Potential future risk developments
+- **Information Gaps:** Areas where additional information is needed
+- **Decline Considerations:** Factors that might make the risk unacceptable
+
+### 6. RISK MITIGATION OPPORTUNITIES
+- **Loss Control Recommendations:** Steps the company could take to reduce risk
+- **Risk Transfer Options:** Alternative risk financing approaches
+- **Monitoring Requirements:** Ongoing risk assessment needs
+
+### 7. COMPETITIVE AND INDUSTRY CONTEXT
+- **Industry Risk Benchmarks:** How this entity compares to industry peers
+- **Market Trends:** Relevant industry developments affecting risk profile
+- **Regulatory Environment:** Current and anticipated regulatory changes
+
+### 8. UNDERWRITING DECISION FRAMEWORK
+- **Accept/Decline Recommendation:** Based on current information
+- **Conditional Acceptance Criteria:** What would need to change for approval
+- **Follow-up Requirements:** Additional information or documentation needed
+- **Review Schedule:** When the risk should be reassessed
+
+## OUTPUT FORMAT
+Please structure your response as a comprehensive underwriting report that follows the above framework. Use clear headings, bullet points for key findings, and provide specific, actionable insights that would enable an underwriter to make informed decisions about this risk.
+
+Focus on delivering the critical 20% of insights that will drive 80% of the underwriting value, as specified in the underwriting framework methodology.
+`;
+};
 const generateResearchReport = async (req, res) => {
-    const { url } = req.body;
+    const { url, additionalText, documents } = req.body;
     if (!url) {
         res.status(400).json({ error: 'URL is required' });
         return;
     }
     try {
-        // Crawl pages and track URLs for later source listing
-        const crawlSite = (startUrl) => new Promise((resolve, reject) => {
-            const crawler = new Crawler(startUrl);
-            crawler.maxDepth = 1; // Reduced from 2 to 1 to get less content
-            crawler.maxConcurrency = 3; // Limit concurrent requests
-            const pages = [];
-            let pageCount = 0;
-            const maxPages = 10; // Limit total pages crawled
-            // Safety guard: stop after 15 seconds (reduced from 20)
-            const crawlTimeout = setTimeout(() => {
-                crawler.stop();
-                resolve(pages);
-            }, 15 * 1000);
-            crawler.on('fetchcomplete', (queueItem, data) => {
-                pageCount++;
-                pages.push({ url: queueItem.url, html: data.toString() });
-                // Stop crawling if we've reached the page limit
-                if (pageCount >= maxPages) {
-                    crawler.stop();
-                    resolve(pages);
-                }
+        console.log(`Starting underwriting research for: ${url}`);
+        // Find and scrape target pages
+        const targetPages = await findTargetPages(url);
+        if (targetPages.length === 0) {
+            res.status(400).json({ error: 'Unable to scrape any content from the provided URL' });
+            return;
+        }
+        console.log(`Found ${targetPages.length} target pages`);
+        // Extract and organize content by page type
+        const pageContents = {};
+        for (const page of targetPages) {
+            const textContent = (0, html_to_text_1.htmlToText)(page.html, {
+                wordwrap: false,
+                selectors: [
+                    { selector: 'nav', format: 'skip' },
+                    { selector: 'header', format: 'skip' },
+                    { selector: 'footer', format: 'skip' },
+                    { selector: '.navigation', format: 'skip' },
+                    { selector: '.menu', format: 'skip' },
+                    { selector: '.sidebar', format: 'skip' },
+                    { selector: 'script', format: 'skip' },
+                    { selector: 'style', format: 'skip' }
+                ]
             });
-            crawler.on('complete', () => {
-                clearTimeout(crawlTimeout);
-                resolve(pages);
-            });
-            ['fetcherror', 'fetchtimeout', 'fetchclienterror'].forEach(evt => crawler.on(evt, () => { }));
-            crawler.start();
-        });
-        const pages = await crawlSite(url);
-        let textContent = pages.map(p => (0, html_to_text_1.htmlToText)(p.html, {
-            wordwrap: false,
-            selectors: [
-                // Remove navigation, header, footer elements that don't add content value
-                { selector: 'nav', format: 'skip' },
-                { selector: 'header', format: 'skip' },
-                { selector: 'footer', format: 'skip' },
-                { selector: '.navigation', format: 'skip' },
-                { selector: '.menu', format: 'skip' },
-                { selector: '.sidebar', format: 'skip' },
-                { selector: 'script', format: 'skip' },
-                { selector: 'style', format: 'skip' }
-            ]
-        })).join('\n');
-        // 2. External Web Search Snippets
-        const hostname = new URL(url).hostname.replace(/^[^\.]+\./, '');
-        const searchRes = await axios_1.default.get(`https://www.google.com/search?q=${encodeURIComponent(hostname)}`);
-        const $ = cheerio.load(searchRes.data);
-        const snippets = [];
-        $('div.BNeawe').each((_i, el) => {
-            const text = $(el).text().trim();
-            if (text.length > 10) { // Only include meaningful snippets
-                snippets.push(text);
+            if (!pageContents[page.pageType]) {
+                pageContents[page.pageType] = '';
             }
-        });
-        const externalText = snippets.slice(0, 20).join('\n'); // Limit to 20 snippets
-        console.log(`Raw content lengths - Crawled: ${textContent.length}, External: ${externalText.length}`);
-        // Optimize individual sections first
-        textContent = optimizeContent(textContent, 400000); // Reserve 400k tokens for crawled content
-        const optimizedExternalText = optimizeContent(externalText, 50000); // Reserve 50k tokens for external content
-        // Combine crawled and external content
-        const combinedContent = `--- Crawled Content ---\n${textContent}\n\n--- External Search Snippets for ${hostname} ---\n${optimizedExternalText}`;
-        // Final optimization pass
-        const finalOptimizedContent = optimizeContent(combinedContent, 600000); // Reserve 600k for combined content, leaving room for prompt
-        console.log(`Final optimized content length: ${finalOptimizedContent.length} characters`);
-        // 3. AI-Powered Analysis (using the Pareto prompt)
-        const paretoPrompt = (0, paretoprompt_1.getParetoPrompt)(finalOptimizedContent);
+            pageContents[page.pageType] += `\n--- ${page.url} ---\n${textContent}\n`;
+        }
+        // Organize scraped content by page type
+        let organizedContent = '';
+        const pageOrder = ['home', 'about', 'services', 'contact'];
+        for (const pageType of pageOrder) {
+            if (pageContents[pageType]) {
+                organizedContent += `\n=== ${pageType.toUpperCase()} PAGE CONTENT ===\n`;
+                organizedContent += optimizeContent(pageContents[pageType], 100000); // 100k tokens per page type
+            }
+        }
+        // Process uploaded documents
+        let documentContent = '';
+        if (documents && documents.length > 0) {
+            documentContent = documents.map((doc, index) => {
+                return `\n--- DOCUMENT ${index + 1}: ${doc.name} ---\n${doc.content || doc.extractedText || 'No content available'}`;
+            }).join('\n');
+            documentContent = optimizeContent(documentContent, 200000); // 200k tokens for documents
+        }
+        // Combine all content
+        const finalOptimizedContent = optimizeContent(organizedContent, 400000); // 400k for scraped content
+        console.log(`Organized content length: ${finalOptimizedContent.length} characters`);
+        console.log(`Additional text length: ${(additionalText || '').length} characters`);
+        console.log(`Document content length: ${documentContent.length} characters`);
+        // Generate underwriting prompt
+        const underwritingPrompt = getUnderwritingPrompt(finalOptimizedContent, additionalText || '', documentContent, url);
         // Final token count check
         const encoder = (0, tiktoken_1.get_encoding)('cl100k_base');
-        const promptTokenCount = encoder.encode(paretoPrompt).length;
+        const promptTokenCount = encoder.encode(underwritingPrompt).length;
         encoder.free();
         console.log(`Final prompt token count: ${promptTokenCount}`);
         if (promptTokenCount > 1048575) {
-            console.error(`Prompt still exceeds token limit: ${promptTokenCount}`);
-            res.status(400).json({ error: 'Content too large to process. Please try a smaller website.' });
+            console.error(`Prompt exceeds token limit: ${promptTokenCount}`);
+            res.status(400).json({ error: 'Content too large to process. Please reduce the amount of text or documents.' });
             return;
         }
-        const reportContent = await aiService_1.aiService.generateReport(paretoPrompt);
-        // Append Sources section to report markdown
-        const crawledDomains = Array.from(new Set(pages.map(p => new URL(p.url).hostname)));
-        const externalSearchUrl = `https://www.google.com/search?q=${encodeURIComponent(hostname)}`;
-        const externalDomain = new URL(externalSearchUrl).hostname;
-        const allSources = Array.from(new Set([...crawledDomains, externalDomain]));
-        const sourcesMarkdown = ['\n---', '**Sources**:']
-            .concat(allSources.map(src => `- ${src}`))
-            .join('\n');
-        const finalMarkdown = reportContent + sourcesMarkdown;
-        // If preview mode, return markdown instead of PDF
-        const preview = req.query.preview === 'true';
-        if (preview) {
-            res.setHeader('Content-Type', 'application/json');
-            res.json({ markdown: finalMarkdown });
-            return;
-        }
-        // 4. PDF Generation
-        const pdfBuffer = await (0, pdfGenerator_1.generatePdfFromReport)(finalMarkdown);
-        res.setHeader('Content-Type', 'application/pdf');
-        res.setHeader('Content-Disposition', 'attachment; filename=research-report.pdf');
-        res.send(pdfBuffer);
+        // Generate the underwriting report
+        const reportContent = await aiService_1.aiService.generateReport(underwritingPrompt);
+        // Add metadata to report
+        const finalReport = `# Underwriting Research Report\n\n**Company:** ${new URL(url).hostname}\n**Generated:** ${new Date().toLocaleDateString()}\n**Analysis Type:** Comprehensive Risk Assessment\n\n---\n\n${reportContent}`;
+        // Return as JSON for the frontend to display
+        res.json({
+            success: true,
+            report: finalReport,
+            metadata: {
+                pagesAnalyzed: targetPages.length,
+                pageTypes: Object.keys(pageContents),
+                documentCount: documents ? documents.length : 0,
+                companyUrl: url
+            }
+        });
     }
     catch (error) {
-        console.error('Failed to generate research report:', error);
+        console.error('Failed to generate underwriting research report:', error);
         res.status(500).json({ error: 'Failed to generate research report' });
     }
 };

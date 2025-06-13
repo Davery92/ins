@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import ChatInterface, { ChatMessage } from '../components/ChatInterface';
+import ChatInterface, { ChatMessage, CitationClick } from '../components/ChatInterface';
 import ApiStatus from '../components/ApiStatus';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
 import Dashboard from '../components/Dashboard';
@@ -11,6 +11,7 @@ import { aiService } from '../services/aiService';
 // Policy-specific prompts are now imported dynamically in functions
 import { defaultPolicyPrompts } from '../prompts/policyPrompts';
 import { chatContextService, ChatContext } from '../services/chatContextService';
+import PdfViewer, { CitationHighlight } from '../components/PdfViewer';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
 
@@ -92,6 +93,17 @@ const Home: React.FC = () => {
     setCurrentChatSession,
     currentChatSessionId
   } = useDocuments();
+
+  // Citation click state
+  const [clickedCitation, setClickedCitation] = useState<CitationClick | null>(null);
+  const [highlight, setHighlight] = useState<CitationHighlight | null>(null);
+  const [citationMap, setCitationMap] = useState<Array<{
+    docId: string;
+    pageNumber: number;
+    startOffset: number;
+    endOffset: number;
+    text: string;
+  }>>([]);
 
   // API functions for customer data and reports
   const fetchCustomers = useCallback(async () => {
@@ -672,24 +684,39 @@ Please provide a detailed and helpful response based on both the comparison repo
     setChatHistory((prev: ChatMessage[]) => [...prev, aiMessage]);
 
     try {
-      // Use the enhanced AI service with full conversation context
+      // Build raw prompt with document spans and conversation history
       const contextData = chatContextService.buildFullContext(currentContext);
-
+      // Fetch spans for each document
+      const spanBlocks = await Promise.all(
+        contextData.documents.map(async doc => {
+          const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/spans`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const spans = res.ok ? await res.json() : [];
+          return spans
+            .map((span: any) =>
+              `[CITATION:${doc.id},${span.pageNumber},${span.startOffset},${span.endOffset}]\n${span.text}`
+            )
+            .join('\n');
+        })
+      );
+      const docContext = spanBlocks.join('\n\n');
+      // Build conversation history text
+      const convHistory = contextData.conversationHistory
+        .map(h => `${h.sender.toUpperCase()}: ${h.content}`)
+        .join('\n');
+      // Build raw prompt without citation instructions
+      const rawPrompt = `${docContext}\n\n${convHistory}\nUSER: ${message}`;
+      // Stream the AI response using raw prompt
       let finalAiContent = '';
-      await aiService.sendMessageWithFullContext(
-        message,
-        contextData.conversationHistory,
-        (streamContent) => {
+      await aiService.sendRawPrompt(rawPrompt, streamContent => {
           finalAiContent = streamContent;
           setChatHistory(prev =>
             prev.map(msg =>
               msg.id === aiMessageId ? { ...msg, content: streamContent } : msg
             )
           );
-        },
-        contextData.documents,
-        contextData.policyType
-      );
+      });
 
       // Mark streaming as complete and save final AI message to backend
       const finalAiMessage: ChatMessage = {
@@ -740,6 +767,16 @@ Please provide a detailed and helpful response based on both the comparison repo
     console.log('⚙️ handleRiskAssessment invoked. Selected Documents:', selectedDocuments);
     if (!selectedCustomer || selectedDocuments.length === 0) return;
     setIsLoading(true);
+    
+    // Build citation map from all selected documents
+    const allSpans: Array<{
+      docId: string;
+      pageNumber: number;
+      startOffset: number;
+      endOffset: number;
+      text: string;
+    }> = [];
+    
     for (const doc of selectedDocuments) {
       console.log('⚙️ Preparing analysis for document:', doc.name, 'policyType:', doc.policyType, 'extractedText length:', doc.extractedText?.length);
       
@@ -751,9 +788,34 @@ Please provide a detailed and helpful response based on both the comparison repo
       const promptFunction = getAnalysisPrompt(policyType);
       const systemPrompt = promptFunction([doc.name]);
       
-      const documentText = `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`;
+      // Fetch spans for citation support
+      const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/spans`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const spans = res.ok ? await res.json() : [];
+      
+      // Add spans to citation map
+      for (const span of spans) {
+        allSpans.push({
+          docId: doc.id,
+          pageNumber: span.pageNumber,
+          startOffset: span.startOffset,
+          endOffset: span.endOffset,
+          text: span.text
+        });
+      }
+      
+      const spanBlocks = spans
+        .map((span: any) =>
+          `[CITATION:${doc.id},${span.pageNumber},${span.startOffset},${span.endOffset}]\n${span.text}`
+        )
+        .join('\n');
+      
+      const documentText = spanBlocks || `Document: ${doc.name}\n${doc.extractedText || 'Unable to extract text from this document.'}`;
       const fullPrompt = `${systemPrompt}\n\n${documentText}`;
-      console.log('⚙️ Full risk assessment prompt using', policyType, 'template:', fullPrompt);
+      console.log('⚙️ Document ID:', doc.id, 'Document Name:', doc.name);
+      console.log('⚙️ First few spans:', spans.slice(0, 3));
+      console.log('⚙️ First 500 chars of spanBlocks:', spanBlocks.substring(0, 500));
       // Notify user of analysis action with title
       const titleMsg: ChatMessage = {
         id: generateMessageId(),
@@ -763,6 +825,10 @@ Please provide a detailed and helpful response based on both the comparison repo
       };
       setChatHistory(prev => [...prev, titleMsg]);
       // Don't save this system-generated message to the backend chat session
+      
+      // Set citation map before streaming response
+      setCitationMap(allSpans);
+      
       // AI message streaming
       const aiMessageId = generateMessageId();
       const aiMessage: ChatMessage = {
@@ -802,9 +868,21 @@ Please provide a detailed and helpful response based on both the comparison repo
     const primaryPolicyType = determinePrimaryPolicyType(selectedDocuments);
     console.log('🔍 Primary policy type for comparison:', primaryPolicyType, 'from documents:', selectedDocuments.map(d => ({ name: d.name, policyType: d.policyType })));
     
-    // Build document text context from extracted PDF text
-    const documentTexts = selectedDocuments.map((doc) =>
-      `Document: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})\n${doc.extractedText || 'Unable to extract text from this document.'}`
+    // Build document text context with spans for citations
+    const documentTexts = await Promise.all(
+      selectedDocuments.map(async (doc) => {
+        const res = await fetch(`${API_BASE_URL}/documents/${doc.id}/spans`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const spans = res.ok ? await res.json() : [];
+        const spanBlocks = spans
+          .map((span: any) =>
+            `[CITATION:${doc.id},${span.pageNumber},${span.startOffset},${span.endOffset}]\n${span.text}`
+          )
+          .join('\n');
+        
+        return spanBlocks || `Document: ${doc.name} (Policy Type: ${doc.policyType || 'Unknown'})\n${doc.extractedText || 'Unable to extract text from this document.'}`;
+      })
     );
     
     // Get the appropriate comparison prompt based on the primary policy type
@@ -1117,6 +1195,52 @@ Please provide a detailed and helpful response based on both the comparison repo
     } catch (error) {
       console.error('Error deleting chat session:', error);
       alert('Error deleting chat session');
+    }
+  };
+
+  // Handle citation clicks: fetch spans to get bbox then highlight
+  const handleCitationClick = async (citation: CitationClick) => {
+    setClickedCitation(citation);
+    try {
+      // First, get fresh download URL for the document
+      const urlResponse = await fetch(`${API_BASE_URL}/documents/${citation.docId}/download`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      let documentUrl = '';
+      if (urlResponse.ok) {
+        const { downloadUrl } = await urlResponse.json();
+        documentUrl = downloadUrl;
+        
+        // Update the document in our local state with the fresh URL
+        const updatedDocuments = documents.map(doc => 
+          doc.id === citation.docId ? { ...doc, fileUrl: downloadUrl } : doc
+        );
+        setDocuments(updatedDocuments);
+      } else {
+        // Fallback to existing URL if refresh fails
+        const doc = documents.find(d => d.id === citation.docId);
+        documentUrl = doc?.fileUrl || '';
+      }
+      
+      // Then fetch spans for highlighting
+      const spansResponse = await fetch(`${API_BASE_URL}/documents/${citation.docId}/spans`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (spansResponse.ok) {
+        const spans: Array<{ pageNumber: number; bbox: [number, number, number, number]; startOffset: number; endOffset: number }> = await spansResponse.json();
+        // Try exact match on start/end; otherwise fallback to first span on the same page
+        let match = spans.find(s => s.pageNumber === citation.page && s.startOffset === citation.start && s.endOffset === citation.end);
+        if (!match) {
+          match = spans.find(s => s.pageNumber === citation.page);
+        }
+        if (match) {
+          setHighlight({ page: citation.page, bbox: match.bbox });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch citation data:', err);
     }
   };
 
@@ -2020,7 +2144,18 @@ Please provide a detailed and helpful response based on both the comparison repo
               messages={chatHistory}
               onSendMessage={handleSendMessage}
               isLoading={isLoading}
+              onCitationClick={handleCitationClick}
+              documents={documents.map(doc => ({id: doc.id, name: doc.name}))}
+              citationMap={citationMap}
             />
+            {/* PdfViewer modal for citation highlight */}
+            {highlight && clickedCitation && (
+              <PdfViewer
+                fileUrl={documents.find(doc => doc.id === clickedCitation.docId)?.fileUrl || ''}
+                highlight={highlight}
+                onClose={() => { setClickedCitation(null); setHighlight(null); }}
+            />
+            )}
           </div>
         </div>
 

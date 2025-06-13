@@ -120,7 +120,7 @@ ${additionalContext}
 **Analysis Approach:** 
 - Implement immediate side-by-side examination of equivalent policy elements
 - Apply rapid assessment of materiality for each difference
-- Utilize direct language citation to substantiate key variances
+- Use direct language quotes to substantiate key variances
 - Employ confidence rating system (1-5 scale) to indicate certainty level
 
 **Information Architecture - Hierarchical Comparison Matrix:**

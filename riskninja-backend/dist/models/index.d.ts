@@ -51,6 +51,17 @@ export declare class PolicyDocumentModel extends Model {
     fileKey: string | null;
     fileUrl: string | null;
 }
+export declare class DocumentWordSpanModel extends Model {
+    id: string;
+    documentId: string;
+    pageNumber: number;
+    text: string;
+    bbox: object;
+    startOffset: number;
+    endOffset: number;
+    readonly createdAt: Date;
+    readonly updatedAt: Date;
+}
 export declare class CustomerModel extends Model {
     id: string;
     userId: string;
@@ -82,6 +93,15 @@ export declare class ComparisonReportModel extends Model {
     primaryPolicyType: string;
     additionalFacts: string | null;
     createdAt: Date;
+    readonly updatedAt: Date;
+}
+export declare class UnderwritingReportModel extends Model {
+    id: string;
+    userId: string;
+    customerId: string;
+    title: string;
+    content: string;
+    readonly createdAt: Date;
     readonly updatedAt: Date;
 }
 export declare const initDatabase: () => Promise<void>;

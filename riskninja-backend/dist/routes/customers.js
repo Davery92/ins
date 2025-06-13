@@ -1,10 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
+const underwritingController_1 = require("../controllers/underwritingController");
 const auth_1 = require("../middleware/auth");
 const checkLicense_1 = require("../middleware/checkLicense");
 const models_1 = require("../models");
 const router = (0, express_1.Router)();
+// Underwriting Report routes
+router.get('/:id/underwriting-reports', auth_1.authenticateToken, checkLicense_1.checkLicense, underwritingController_1.getUnderwritingReports);
+router.post('/:id/underwriting-reports', auth_1.authenticateToken, checkLicense_1.checkLicense, underwritingController_1.createUnderwritingReport);
 // GET /api/customers - get all customers and prospects for the user
 router.get('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
     try {
