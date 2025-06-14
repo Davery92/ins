@@ -398,6 +398,14 @@ ComparisonReportModel.init({
             key: 'id',
         },
     },
+    customerId: {
+        type: sequelize_1.DataTypes.UUID,
+        allowNull: true, // Can be null for reports not linked to a customer
+        references: {
+            model: CustomerModel,
+            key: 'id',
+        },
+    },
     title: {
         type: sequelize_1.DataTypes.STRING,
         allowNull: false,

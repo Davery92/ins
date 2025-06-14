@@ -211,12 +211,12 @@ function renderContentWithCitations(
       const contentPart = text.slice(lastIndex, idx);
       parts.push(
         <div key={`text-${lastIndex}-${idx}`} className="chart-container">
-          <ReactMarkdown 
-            remarkPlugins={[remarkGfm]} 
-            rehypePlugins={[rehypeHighlight, rehypeKatex]}
-          >
+        <ReactMarkdown 
+          remarkPlugins={[remarkGfm]} 
+          rehypePlugins={[rehypeHighlight, rehypeKatex]}
+        >
             {contentPart}
-          </ReactMarkdown>
+        </ReactMarkdown>
           {/* Add chart export buttons for detected charts in this content section */}
           {detectedCharts.map((chart, chartIndex) => (
             <ChartExportButton key={`chart-${chartIndex}`} chartData={chart} />
@@ -259,12 +259,12 @@ function renderContentWithCitations(
     const remainingContent = text.slice(lastIndex);
     parts.push(
       <div key={`text-${lastIndex}-end`} className="chart-container">
-        <ReactMarkdown 
-          remarkPlugins={[remarkGfm]} 
-          rehypePlugins={[rehypeHighlight, rehypeKatex]}
-        >
+      <ReactMarkdown 
+        remarkPlugins={[remarkGfm]} 
+        rehypePlugins={[rehypeHighlight, rehypeKatex]}
+      >
           {remainingContent}
-        </ReactMarkdown>
+      </ReactMarkdown>
         {/* Add chart export buttons for any remaining charts */}
         {detectedCharts.map((chart, chartIndex) => (
           <ChartExportButton key={`remaining-chart-${chartIndex}`} chartData={chart} />
@@ -373,7 +373,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       
       // Focus back to input after sending
       setTimeout(() => {
-        inputRef.current?.focus();
+      inputRef.current?.focus();
       }, 100);
     }
   };
@@ -531,10 +531,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   </div>
                   {message.sender === 'user' && (
                     <div className="flex items-center justify-end mt-2 text-xs text-blue-100">
-                      <span>{formatTime(message.timestamp)}</span>
+                    <span>{formatTime(message.timestamp)}</span>
                     </div>
                   )}
-                  {message.sender === 'ai' && !message.isStreaming && (
+                    {message.sender === 'ai' && !message.isStreaming && (
                     <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-200/30 dark:border-gray-700/30">
                       <div className="flex items-center gap-2">
                         {detectedCharts.length > 0 && (
@@ -558,7 +558,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                         Copy
                       </button>
                     </div>
-                  )}
+                    )}
                 </div>
               </div>
             ))}
@@ -574,16 +574,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div className="flex items-end gap-4 max-w-6xl mx-auto">
               <div className="flex-1">
                 <div className="relative">
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={inputMessage}
-                    onChange={(e) => setInputMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  onKeyPress={handleKeyPress}
                     placeholder="Ask about policies, risks, coverage gaps, or premium optimization..."
-                    disabled={isLoading}
+                  disabled={isLoading}
                     className="w-full px-6 py-4 bg-white dark:bg-gray-800 border border-gray-300/50 dark:border-gray-600/50 rounded-2xl text-gray-800 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/50 transition-all duration-200 disabled:opacity-50 shadow-sm text-base"
-                  />
+                />
                   {isLoading && (
                     <div className="absolute right-4 top-1/2 transform -translate-y-1/2">
                       <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -646,8 +646,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <div className="mb-4">
               <div className="w-16 h-16 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
                 <svg className="w-8 h-8 text-gray-400 dark:text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                </svg>
+                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+              </svg>
               </div>
               <h4 className="text-lg font-semibold text-secondary dark:text-dark-text mb-2">
                 Sign in to get started

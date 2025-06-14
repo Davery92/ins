@@ -20,6 +20,7 @@ router.get('/', authenticateToken, checkLicense, async (req: Request, res: Respo
         'documentIds',
         'primaryPolicyType',
         'additionalFacts',
+        'customerId',
         'createdAt'
       ]
     });
@@ -34,7 +35,7 @@ router.get('/', authenticateToken, checkLicense, async (req: Request, res: Respo
 router.post('/', authenticateToken, checkLicense, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.id;
-    const { title, content, documentNames, documentIds, primaryPolicyType, additionalFacts } = req.body;
+    const { title, content, documentNames, documentIds, primaryPolicyType, additionalFacts, customerId } = req.body;
 
     if (!title || !content || !documentNames || !documentIds || !primaryPolicyType) {
       res.status(400).json({ 
@@ -45,6 +46,7 @@ router.post('/', authenticateToken, checkLicense, async (req: Request, res: Resp
 
     const comparisonReport = await ComparisonReportModel.create({
       userId,
+      customerId: customerId || null,
       title,
       content,
       documentNames,
@@ -61,6 +63,7 @@ router.post('/', authenticateToken, checkLicense, async (req: Request, res: Resp
       documentIds: comparisonReport.documentIds,
       primaryPolicyType: comparisonReport.primaryPolicyType,
       additionalFacts: comparisonReport.additionalFacts,
+      customerId: comparisonReport.customerId,
       createdAt: comparisonReport.createdAt,
     });
   } catch (error) {
@@ -87,6 +90,7 @@ router.get('/:id', authenticateToken, checkLicense, async (req: Request, res: Re
         'documentIds',
         'primaryPolicyType',
         'additionalFacts',
+        'customerId',
         'createdAt'
       ]
     });
@@ -100,6 +104,48 @@ router.get('/:id', authenticateToken, checkLicense, async (req: Request, res: Re
   } catch (error) {
     console.error('Error fetching comparison report:', error);
     res.status(500).json({ error: 'Failed to fetch comparison report' });
+  }
+});
+
+// GET /comparison-reports/customer/:customerId - Get comparison reports for a specific customer
+router.get('/customer/:customerId', authenticateToken, checkLicense, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.id;
+    const { customerId } = req.params;
+    
+    // Verify the customer belongs to the user
+    const customer = await ComparisonReportModel.sequelize?.models.Customer.findOne({
+      where: { id: customerId, userId }
+    });
+    
+    if (!customer) {
+      res.status(404).json({ error: 'Customer not found' });
+      return;
+    }
+    
+    const reports = await ComparisonReportModel.findAll({
+      where: { 
+        userId,
+        customerId 
+      },
+      order: [['createdAt', 'DESC']],
+      attributes: [
+        'id',
+        'title',
+        'content',
+        'documentNames',
+        'documentIds',
+        'primaryPolicyType',
+        'additionalFacts',
+        'customerId',
+        'createdAt'
+      ]
+    });
+    
+    res.json(reports);
+  } catch (error) {
+    console.error('Error fetching customer comparison reports:', error);
+    res.status(500).json({ error: 'Failed to fetch customer comparison reports' });
   }
 });
 

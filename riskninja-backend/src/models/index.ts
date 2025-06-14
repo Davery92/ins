@@ -464,6 +464,7 @@ ChatSessionModel.init({
 export class ComparisonReportModel extends Model {
   public id!: string;
   public userId!: string;
+  public customerId!: string | null; // Link to customer
   public title!: string;
   public content!: string;
   public documentNames!: string[];
@@ -485,6 +486,14 @@ ComparisonReportModel.init({
     allowNull: false,
     references: {
       model: UserModel,
+      key: 'id',
+    },
+  },
+  customerId: {
+    type: DataTypes.UUID,
+    allowNull: true, // Can be null for reports not linked to a customer
+    references: {
+      model: CustomerModel,
       key: 'id',
     },
   },

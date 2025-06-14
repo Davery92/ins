@@ -20,6 +20,7 @@ router.get('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (re
                 'documentIds',
                 'primaryPolicyType',
                 'additionalFacts',
+                'customerId',
                 'createdAt'
             ]
         });
@@ -34,7 +35,7 @@ router.get('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (re
 router.post('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { title, content, documentNames, documentIds, primaryPolicyType, additionalFacts } = req.body;
+        const { title, content, documentNames, documentIds, primaryPolicyType, additionalFacts, customerId } = req.body;
         if (!title || !content || !documentNames || !documentIds || !primaryPolicyType) {
             res.status(400).json({
                 error: 'Missing required fields: title, content, documentNames, documentIds, primaryPolicyType'
@@ -43,6 +44,7 @@ router.post('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (r
         }
         const comparisonReport = await models_1.ComparisonReportModel.create({
             userId,
+            customerId: customerId || null,
             title,
             content,
             documentNames,
@@ -58,6 +60,7 @@ router.post('/', auth_1.authenticateToken, checkLicense_1.checkLicense, async (r
             documentIds: comparisonReport.documentIds,
             primaryPolicyType: comparisonReport.primaryPolicyType,
             additionalFacts: comparisonReport.additionalFacts,
+            customerId: comparisonReport.customerId,
             createdAt: comparisonReport.createdAt,
         });
     }
@@ -84,6 +87,7 @@ router.get('/:id', auth_1.authenticateToken, checkLicense_1.checkLicense, async 
                 'documentIds',
                 'primaryPolicyType',
                 'additionalFacts',
+                'customerId',
                 'createdAt'
             ]
         });
@@ -96,6 +100,44 @@ router.get('/:id', auth_1.authenticateToken, checkLicense_1.checkLicense, async 
     catch (error) {
         console.error('Error fetching comparison report:', error);
         res.status(500).json({ error: 'Failed to fetch comparison report' });
+    }
+});
+// GET /comparison-reports/customer/:customerId - Get comparison reports for a specific customer
+router.get('/customer/:customerId', auth_1.authenticateToken, checkLicense_1.checkLicense, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { customerId } = req.params;
+        // Verify the customer belongs to the user
+        const customer = await models_1.ComparisonReportModel.sequelize?.models.Customer.findOne({
+            where: { id: customerId, userId }
+        });
+        if (!customer) {
+            res.status(404).json({ error: 'Customer not found' });
+            return;
+        }
+        const reports = await models_1.ComparisonReportModel.findAll({
+            where: {
+                userId,
+                customerId
+            },
+            order: [['createdAt', 'DESC']],
+            attributes: [
+                'id',
+                'title',
+                'content',
+                'documentNames',
+                'documentIds',
+                'primaryPolicyType',
+                'additionalFacts',
+                'customerId',
+                'createdAt'
+            ]
+        });
+        res.json(reports);
+    }
+    catch (error) {
+        console.error('Error fetching customer comparison reports:', error);
+        res.status(500).json({ error: 'Failed to fetch customer comparison reports' });
     }
 });
 // DELETE /comparison-reports/:id - Delete a comparison report

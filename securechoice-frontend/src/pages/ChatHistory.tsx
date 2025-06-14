@@ -27,6 +27,7 @@ const Research: React.FC = () => {
   const location = useLocation();
   const customerId = (location.state as any)?.customerId;
   const [url, setUrl] = useState('');
+  const [reportTitle, setReportTitle] = useState('');
   const [additionalText, setAdditionalText] = useState('');
   const [uploadedDocuments, setUploadedDocuments] = useState<UploadedFile[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -67,6 +68,10 @@ Phone: ${context.phone || 'N/A'}
 This underwriting research is being conducted for the above customer/prospect.`;
         
         setAdditionalText(contextText);
+        
+        // Set default report title
+        const defaultTitle = `Underwriting Research - ${context.customerName} - ${new Date().toLocaleDateString()}`;
+        setReportTitle(defaultTitle);
         
         // Clear the stored context after using it
         localStorage.removeItem('riskninja-customer-context');
@@ -163,7 +168,7 @@ This underwriting research is being conducted for the above customer/prospect.`;
                 'Authorization': `Bearer ${token}`
               },
               body: JSON.stringify({
-                title: `Underwriting Research Report - ${customerName} - ${new Date().toLocaleDateString()}`,
+                title: reportTitle || `Underwriting Research Report - ${customerName} - ${new Date().toLocaleDateString()}`,
                 content: result.report
               })
             }
@@ -391,13 +396,13 @@ Please provide a detailed and helpful response based on the research report cont
     <div className={`flex-1 flex flex-col ${report ? 'w-full bg-slate-50 dark:bg-dark-bg min-h-screen overflow-y-auto py-6' : 'p-6 max-w-7xl mx-auto overflow-y-auto'}`}>
       {!report ? (
         <div className="w-full">
-          <div className="mb-6">
-            <h1 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">
-              Underwriting Research
-            </h1>
-            <p className="text-accent dark:text-dark-muted">
-              Generate comprehensive underwriting analysis by researching company websites, adding context, and uploading supporting documents.
-            </p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-secondary dark:text-dark-text mb-2">
+          Underwriting Research
+        </h1>
+        <p className="text-accent dark:text-dark-muted">
+          Generate comprehensive underwriting analysis by researching company websites, adding context, and uploading supporting documents.
+        </p>
             
             {/* Customer Context Indicator */}
             {customerContext && (
@@ -418,13 +423,31 @@ Please provide a detailed and helpful response based on the research report cont
                 </p>
               </div>
             )}
-          </div>
+      </div>
 
-          {/* Research Form */}
-          <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg p-6 mb-6">
+      {/* Research Form */}
+      <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg p-6 mb-6">
         <h2 className="text-lg font-semibold text-secondary dark:text-dark-text mb-4">
           Research Parameters
         </h2>
+
+        {/* Report Title */}
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">
+            Report Title
+          </label>
+          <input
+            type="text"
+            value={reportTitle}
+            onChange={(e) => setReportTitle(e.target.value)}
+            placeholder="Enter a title for this research report..."
+            className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-transparent"
+            disabled={isGenerating}
+          />
+          <p className="text-xs text-accent dark:text-dark-muted mt-1">
+            Leave blank to use the default title format.
+          </p>
+        </div>
 
         {/* URL Input */}
         <div className="mb-4">
@@ -444,7 +467,7 @@ Please provide a detailed and helpful response based on the research report cont
           </p>
         </div>
 
-        {/* Additional Text */}
+        {/* Report Title */}
         <div className="mb-4">
           <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">
             Additional Context
@@ -521,20 +544,20 @@ Please provide a detailed and helpful response based on the research report cont
             </>
           )}
         </button>
-          </div>
+      </div>
 
-          {/* Error Display */}
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
-              <div className="flex items-center gap-2">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
-                  <path d="M12,2L13.09,8.26L22,9L13.09,9.74L12,16L10.91,9.74L2,9L10.91,8.26L12,2Z" />
-                </svg>
-                <span className="text-red-700 dark:text-red-400 font-medium">Error</span>
-              </div>
-              <p className="text-red-700 dark:text-red-400 mt-1">{error}</p>
-            </div>
-          )}
+      {/* Error Display */}
+      {error && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-6">
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-red-600">
+              <path d="M12,2L13.09,8.26L22,9L13.09,9.74L12,16L10.91,9.74L2,9L10.91,8.26L12,2Z" />
+            </svg>
+            <span className="text-red-700 dark:text-red-400 font-medium">Error</span>
+          </div>
+          <p className="text-red-700 dark:text-red-400 mt-1">{error}</p>
+        </div>
+      )}
         </div>
       ) : (
         // Research Report Display - Side-by-side layout
@@ -543,35 +566,35 @@ Please provide a detailed and helpful response based on the research report cont
           <div className="lg:col-span-2 bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden flex flex-col">
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center justify-between">
-                <div>
+            <div>
                   <h3 className="font-semibold text-secondary dark:text-dark-text">
                     Underwriting Research Report
                   </h3>
-                  <p className="text-sm text-accent dark:text-dark-muted">
-                    Analyzed {report.metadata.pagesAnalyzed} pages • {report.metadata.documentCount} documents
-                  </p>
-                </div>
-                <button
-                  onClick={exportToPDF}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                  </svg>
-                  Export PDF
-                </button>
-              </div>
+              <p className="text-sm text-accent dark:text-dark-muted">
+                Analyzed {report.metadata.pagesAnalyzed} pages • {report.metadata.documentCount} documents
+              </p>
+            </div>
+            <button
+              onClick={exportToPDF}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+              </svg>
+              Export PDF
+            </button>
+          </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 bg-gray-50 dark:bg-gray-900 min-h-[600px]">
               <div className="w-full bg-white dark:bg-dark-bg shadow-lg rounded-lg p-8">
                 <div className="text-base leading-relaxed text-secondary dark:text-dark-text">
                   <div ref={reportRef} className="overflow-x-scroll markdown-content" style={{ overflowX: 'scroll' }}>
-                    <ReactMarkdown 
-                      remarkPlugins={[remarkGfm]}
-                      rehypePlugins={[rehypeHighlight, rehypeKatex]}
-                    >
-                      {report.report}
-                    </ReactMarkdown>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight, rehypeKatex]}
+              >
+                {report.report}
+              </ReactMarkdown>
                   </div>
                 </div>
               </div>

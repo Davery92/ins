@@ -13,11 +13,20 @@ import { aiService } from '../services/aiService';
 import { spansToPrompt } from '../utils/spansToPrompt';
 import html2pdf from 'html2pdf.js';
 
-type WizardStep = 'document-selection' | 'additional-facts' | 'generating-report' | 'view-report';
+type WizardStep = 'customer-selection' | 'document-selection' | 'report-details' | 'generating-report' | 'view-report';
 
 interface ProgressStatus {
   message: string;
   progress: number;
+}
+
+interface Customer {
+  id: string;
+  name: string;
+  type: 'customer' | 'prospect';
+  email?: string;
+  phone?: string;
+  company?: string;
 }
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
@@ -34,8 +43,12 @@ const Comparison: React.FC = () => {
     setChatHistory
   } = useDocuments();
 
-  const [currentStep, setCurrentStep] = useState<WizardStep>('document-selection');
+  const [currentStep, setCurrentStep] = useState<WizardStep>('customer-selection');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerDocuments, setCustomerDocuments] = useState<any[]>([]);
   const [selectedDocs, setSelectedDocs] = useState<string[]>([]);
+  const [reportTitle, setReportTitle] = useState('');
   const [additionalFacts, setAdditionalFacts] = useState('');
   const [progressStatus, setProgressStatus] = useState<ProgressStatus>({ message: '', progress: 0 });
   const [comparisonReport, setComparisonReport] = useState<string>('');
@@ -48,7 +61,89 @@ const Comparison: React.FC = () => {
   // Initialize selected documents from context
   useEffect(() => {
     setSelectedDocs(selectedDocumentIds);
+    // If we have selected documents, skip customer selection and go to document selection
+    if (selectedDocumentIds.length > 0) {
+      setCurrentStep('document-selection');
+    }
   }, [selectedDocumentIds]);
+
+  // Fetch customers on component mount and check for customer context
+  useEffect(() => {
+    fetchCustomers();
+    
+    // Check for customer context from Home page navigation
+    const storedContext = localStorage.getItem('riskninja-comparison-customer-context');
+    if (storedContext) {
+      try {
+        const context = JSON.parse(storedContext);
+        const customer: Customer = {
+          id: context.customerId,
+          name: context.customerName,
+          type: context.type,
+          email: context.email,
+          phone: context.phone,
+          company: context.company
+        };
+        
+        handleCustomerSelection(customer);
+        setCurrentStep('document-selection');
+        
+        // Clear the stored context after using it
+        localStorage.removeItem('riskninja-comparison-customer-context');
+      } catch (error) {
+        console.error('Error parsing customer context:', error);
+      }
+    }
+  }, []);
+
+  // Fetch customers from API
+  const fetchCustomers = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/customers`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const allCustomers = await response.json();
+        setCustomers(allCustomers);
+      } else {
+        console.error('Failed to fetch customers');
+      }
+    } catch (error) {
+      console.error('Error fetching customers:', error);
+    }
+  };
+
+  // Fetch documents for selected customer
+  const fetchCustomerDocuments = async (customerId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/customers/${customerId}/documents`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const docs = await response.json();
+        setCustomerDocuments(docs);
+      } else {
+        console.error('Failed to fetch customer documents');
+      }
+    } catch (error) {
+      console.error('Error fetching customer documents:', error);
+    }
+  };
+
+  // Update customer selection handler
+  const handleCustomerSelection = async (customer: Customer) => {
+    setSelectedCustomer(customer);
+    // Generate default report title
+    const defaultTitle = `Policy Comparison - ${customer.name} - ${new Date().toLocaleDateString()}`;
+    setReportTitle(defaultTitle);
+    
+    // Fetch documents for this customer
+    await fetchCustomerDocuments(customer.id);
+  };
 
   // Handle loading existing report from navigation state or URL
   useEffect(() => {
@@ -184,14 +279,14 @@ const Comparison: React.FC = () => {
 
   const handleNextFromDocuments = () => {
     if (selectedDocs.length < 2) return;
-    setCurrentStep('additional-facts');
+    setCurrentStep('report-details');
   };
 
   const handleBackToDocuments = () => {
     setCurrentStep('document-selection');
   };
 
-  const handleNextFromFacts = async () => {
+  const handleNextFromReportDetails = async () => {
     setCurrentStep('generating-report');
     setError(null);
 
@@ -207,7 +302,7 @@ const Comparison: React.FC = () => {
       await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Get selected documents with their content
-      const selectedDocuments = documents.filter(doc => selectedDocs.includes(doc.id));
+      const selectedDocuments = customerDocuments.filter(doc => selectedDocs.includes(doc.id));
       
       // Import prompt mapping utilities
       const { determinePrimaryPolicyType } = await import('../utils/promptMapping');
@@ -269,7 +364,8 @@ const Comparison: React.FC = () => {
             documentNames: documentNames,
             documentIds: selectedDocs,
             primaryPolicyType: primaryPolicyType,
-            additionalFacts: additionalFacts
+            additionalFacts: additionalFacts,
+            customerId: selectedCustomer?.id || null
           })
         });
 
@@ -284,13 +380,43 @@ const Comparison: React.FC = () => {
         // Continue anyway - the report was generated successfully
       }
 
+      // Save report to customer's underwriting reports if customer is selected
+      if (selectedCustomer) {
+        try {
+          console.log('💾 Saving comparison report to customer:', selectedCustomer.name);
+          const customerSaveResponse = await fetch(
+            `${API_BASE_URL}/customers/${selectedCustomer.id}/underwriting-reports`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                title: reportTitle,
+                content: reportContent
+              })
+            }
+          );
+          
+          if (customerSaveResponse.ok) {
+            console.log('✅ Comparison report saved to customer successfully:', selectedCustomer.name);
+          } else {
+            console.error('Failed to save comparison report to customer:', await customerSaveResponse.text());
+          }
+        } catch (customerSaveError) {
+          console.error('Error saving comparison report to customer:', customerSaveError);
+          // Continue anyway - the main report was generated successfully
+        }
+      }
+
       setProgressStatus({ message: 'Complete!', progress: 100 });
       setComparisonReport(reportContent);
 
       // Initialize chat with report context
       const initialMessage: ChatMessage = {
         id: `msg_${Date.now()}`,
-        content: `I've generated your comparison report analyzing ${documentNames.join(', ')}. The report covers key differences, similarities, and recommendations. Feel free to ask me any questions about the findings!`,
+        content: `I've generated your comparison report analyzing ${documentNames.join(', ')}. The report covers key differences, similarities, and recommendations. ${selectedCustomer ? `This report has been automatically saved to ${selectedCustomer.name}'s profile.` : ''} Feel free to ask me any questions about the findings!`,
         sender: 'ai',
         timestamp: new Date()
       };
@@ -583,9 +709,9 @@ Please provide a detailed and helpful response based on the comparison report co
             <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-semibold text-secondary dark:text-dark-text">
+                <h3 className="font-semibold text-secondary dark:text-dark-text">
                     Document Comparison Report
-                  </h3>
+                </h3>
                   <p className="text-sm text-accent dark:text-dark-muted">
                     Comparing {selectedDocs.length} documents • Generated {new Date().toLocaleDateString()}
                   </p>
@@ -693,21 +819,21 @@ Please provide a detailed and helpful response based on the comparison report co
               <div className="space-y-3">
                 <h4 className="text-sm font-medium text-secondary dark:text-dark-text">Quick Actions</h4>
                 <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      // Reset wizard for new comparison
-                      setCurrentStep('document-selection');
-                      setSelectedDocs([]);
-                      setAdditionalFacts('');
-                      setComparisonReport('');
-                      setChatHistory([]);
-                      setError(null);
-                      setShowExportMenu(false);
-                    }}
+          <button
+            onClick={() => {
+              // Reset wizard for new comparison
+              setCurrentStep('document-selection');
+              setSelectedDocs([]);
+              setAdditionalFacts('');
+              setComparisonReport('');
+              setChatHistory([]);
+              setError(null);
+              setShowExportMenu(false);
+            }}
                     className="w-full px-3 py-2 text-sm bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-                  >
-                    Start New Comparison
-                  </button>
+          >
+            Start New Comparison
+          </button>
                   <button
                     onClick={() => setShowExportMenu(!showExportMenu)}
                     className="w-full px-3 py-2 text-sm bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
@@ -794,6 +920,85 @@ Please provide a detailed and helpful response based on the comparison report co
   const renderStepContent = () => {
     
     switch (currentStep) {
+      case 'customer-selection':
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold text-secondary dark:text-dark-text mb-4">
+                Select Customer
+              </h2>
+              <p className="text-accent dark:text-dark-muted mb-6">
+                Choose a customer to compare documents for.
+              </p>
+            </div>
+
+            {/* Existing Customers */}
+            <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-secondary dark:text-dark-text mb-4">
+                Existing Customers
+              </h3>
+              
+              {customers.length === 0 ? (
+                <p className="text-accent dark:text-dark-muted text-center py-8">
+                  No customers available. Add a new customer below to get started.
+                </p>
+              ) : (
+                <div className="grid gap-3">
+                  {customers.map((customer) => (
+                    <label
+                      key={customer.id}
+                      className="flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
+                    >
+                                             <input
+                         type="radio"
+                         checked={selectedCustomer?.id === customer.id}
+                         onChange={() => handleCustomerSelection(customer)}
+                         className="h-4 w-4 text-primary focus:ring-primary border-gray-300 rounded"
+                       />
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-secondary dark:text-dark-text">
+                            {customer.name}
+                          </span>
+                        </div>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Add New Customer */}
+            <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+              <h3 className="text-lg font-semibold text-secondary dark:text-dark-text mb-4">
+                Add New Customer
+              </h3>
+              {/* Add customer input form */}
+            </div>
+
+            {/* Navigation */}
+            <div className="flex justify-between pt-6 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => navigate(-1)}
+                className="px-4 py-2 text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  if (selectedCustomer) {
+                    setCurrentStep('document-selection');
+                  }
+                }}
+                disabled={!selectedCustomer}
+                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        );
+
       case 'document-selection':
         return (
           <div className="space-y-6">
@@ -802,23 +1007,40 @@ Please provide a detailed and helpful response based on the comparison report co
                 Select Documents to Compare
               </h2>
               <p className="text-accent dark:text-dark-muted mb-6">
-                Choose at least two documents to compare. You can select from existing documents or upload new ones.
+                Choose at least two documents from {selectedCustomer?.name}'s files to compare.
               </p>
             </div>
 
-            {/* Existing Documents */}
+            {/* Customer Info */}
+            {selectedCustomer && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600">
+                    <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+                  </svg>
+                  <span className="font-medium text-blue-900 dark:text-blue-100">
+                    Comparing documents for: {selectedCustomer.name}
+                  </span>
+                </div>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Company: {selectedCustomer.company || 'N/A'} • Type: {selectedCustomer.type}
+                </p>
+              </div>
+            )}
+
+            {/* Customer Documents */}
             <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg p-6">
               <h3 className="text-lg font-semibold text-secondary dark:text-dark-text mb-4">
-                Existing Documents
+                Customer Documents
               </h3>
               
-              {documents.length === 0 ? (
+              {customerDocuments.length === 0 ? (
                 <p className="text-accent dark:text-dark-muted text-center py-8">
-                  No documents available. Upload some documents below to get started.
+                  No documents available for this customer. Upload documents below to get started.
                 </p>
               ) : (
                 <div className="grid gap-3">
-                  {documents.map((doc) => (
+                  {customerDocuments.map((doc) => (
                     <label
                       key={doc.id}
                       className="flex items-center space-x-3 p-3 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
@@ -875,18 +1097,37 @@ Please provide a detailed and helpful response based on the comparison report co
           </div>
         );
 
-      case 'additional-facts':
+      case 'report-details':
         return (
           <div className="space-y-6">
             <div>
               <h2 className="text-2xl font-bold text-secondary dark:text-dark-text mb-4">
-                Additional Context
+                Report Details
               </h2>
               <p className="text-accent dark:text-dark-muted mb-6">
-                Provide any additional context, facts, or specific aspects you'd like the comparison to focus on.
+                Provide a title for your report and any additional context you'd like the comparison to focus on.
               </p>
             </div>
 
+            {/* Report Title */}
+            <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg p-6">
+              <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-3">
+                Report Title *
+              </label>
+              <input
+                type="text"
+                value={reportTitle}
+                onChange={(e) => setReportTitle(e.target.value)}
+                placeholder="Enter a title for this comparison report..."
+                className="w-full p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-primary focus:border-transparent"
+                required
+              />
+              <p className="text-sm text-accent dark:text-dark-muted mt-2">
+                This title will be used to save and identify the report.
+              </p>
+            </div>
+
+            {/* Additional Context */}
             <div className="bg-white dark:bg-dark-bg border border-gray-200 dark:border-gray-700 rounded-lg p-6">
               <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-3">
                 Additional Facts and Context
@@ -927,8 +1168,9 @@ Please provide a detailed and helpful response based on the comparison report co
                 Back
               </button>
               <button
-                onClick={handleNextFromFacts}
-                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
+                onClick={handleNextFromReportDetails}
+                disabled={!reportTitle.trim()}
+                className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
               >
                 Generate Report
               </button>
@@ -979,7 +1221,7 @@ Please provide a detailed and helpful response based on the comparison report co
                     <button
                       onClick={() => {
                         setError(null);
-                        setCurrentStep('additional-facts');
+                        setCurrentStep('report-details');
                       }}
                       className="mt-3 w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
                     >
@@ -1028,23 +1270,23 @@ Please provide a detailed and helpful response based on the comparison report co
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
-              {(['document-selection', 'additional-facts', 'generating-report', 'view-report'] as WizardStep[]).map((step, index) => (
+              {(['customer-selection', 'document-selection', 'report-details', 'generating-report', 'view-report'] as WizardStep[]).map((step, index) => (
                 <div key={step} className="flex items-center">
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
                       currentStep === step
                         ? 'bg-primary text-white'
-                        : (['document-selection', 'additional-facts', 'generating-report', 'view-report'] as WizardStep[]).indexOf(currentStep) > index
+                        : (['customer-selection', 'document-selection', 'report-details', 'generating-report', 'view-report'] as WizardStep[]).indexOf(currentStep) > index
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
                     }`}
                   >
-                    {(['document-selection', 'additional-facts', 'generating-report', 'view-report'] as WizardStep[]).indexOf(currentStep) > index ? '✓' : index + 1}
+                    {(['customer-selection', 'document-selection', 'report-details', 'generating-report', 'view-report'] as WizardStep[]).indexOf(currentStep) > index ? '✓' : index + 1}
                   </div>
-                  {index < 3 && (
+                  {index < 4 && (
                     <div
                       className={`w-16 h-1 mx-2 ${
-                        (['document-selection', 'additional-facts', 'generating-report', 'view-report'] as WizardStep[]).indexOf(currentStep) > index
+                        (['customer-selection', 'document-selection', 'report-details', 'generating-report', 'view-report'] as WizardStep[]).indexOf(currentStep) > index
                           ? 'bg-green-500'
                           : 'bg-gray-200 dark:bg-gray-700'
                       }`}
@@ -1054,12 +1296,13 @@ Please provide a detailed and helpful response based on the comparison report co
               ))}
             </div>
           </div>
-          <div className="flex space-x-20 mt-2">
-            <span className="text-sm text-secondary dark:text-dark-text">Select Documents</span>
-            <span className="text-sm text-secondary dark:text-dark-text">Add Context</span>
-            <span className="text-sm text-secondary dark:text-dark-text">Generate Report</span>
-            <span className="text-sm text-secondary dark:text-dark-text">Review & Chat</span>
-          </div>
+                      <div className="flex space-x-20 mt-2">
+              <span className="text-sm text-secondary dark:text-dark-text">Select Customer</span>
+              <span className="text-sm text-secondary dark:text-dark-text">Select Documents</span>
+              <span className="text-sm text-secondary dark:text-dark-text">Report Details</span>
+              <span className="text-sm text-secondary dark:text-dark-text">Generate Report</span>
+              <span className="text-sm text-secondary dark:text-dark-text">Review & Chat</span>
+            </div>
         </div>
       )}
 

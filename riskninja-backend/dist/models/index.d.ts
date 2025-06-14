@@ -86,6 +86,7 @@ export declare class ChatSessionModel extends Model {
 export declare class ComparisonReportModel extends Model {
     id: string;
     userId: string;
+    customerId: string | null;
     title: string;
     content: string;
     documentNames: string[];

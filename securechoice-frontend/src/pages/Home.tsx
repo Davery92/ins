@@ -1381,14 +1381,14 @@ Please provide a detailed and helpful response based on both the comparison repo
             if (testResponse.ok) {
               console.log('📄 Download URL is accessible');
               documentToView = { ...document, fileUrl: data.downloadUrl };
-            } else {
+                          } else {
               console.warn('📄 Download URL test failed:', testResponse.status);
             }
           } catch (testError) {
             console.warn('📄 Could not test download URL:', testError);
             // Still try to use the URL even if test fails
             documentToView = { ...document, fileUrl: data.downloadUrl };
-          }
+                          }
         } else {
           console.warn('📄 Failed to get fresh download URL:', response.status, await response.text());
         }
@@ -1571,79 +1571,79 @@ Please provide a detailed and helpful response based on the selected documents a
           Your AI-powered insurance risk assessment platform. Upload documents, generate comprehensive reports, 
           and make informed underwriting decisions with advanced analytics.
         </p>
-      </div>
+                </div>
 
       {/* Customer/Prospects/Reports Management Section */}
       <div className="mb-8">
         <div className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-lg p-6">
           {!selectedCustomer ? (
             <>
-              <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-semibold text-secondary dark:text-dark-text">
                   Customer & Report Management
                 </h2>
                 <div className="flex items-center gap-4">
                   {/* View Toggle */}
                   <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                    <button
-                      onClick={() => setSelectedView('customers')}
+                <button
+                  onClick={() => setSelectedView('customers')}
                       className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                        selectedView === 'customers'
+                    selectedView === 'customers'
                           ? 'bg-white dark:bg-gray-700 text-secondary dark:text-dark-text shadow-sm'
-                          : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
-                      }`}
-                    >
-                      Customers
-                    </button>
-                    <button
-                      onClick={() => setSelectedView('prospects')}
+                      : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
+                  }`}
+                >
+                  Customers
+                </button>
+                <button
+                  onClick={() => setSelectedView('prospects')}
                       className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                        selectedView === 'prospects'
+                    selectedView === 'prospects'
                           ? 'bg-white dark:bg-gray-700 text-secondary dark:text-dark-text shadow-sm'
-                          : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
-                      }`}
-                    >
-                      Prospects
-                    </button>
-                    <button
-                      onClick={() => setSelectedView('reports')}
+                      : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
+                  }`}
+                >
+                  Prospects
+                </button>
+                <button
+                  onClick={() => setSelectedView('reports')}
                       className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                        selectedView === 'reports'
+                    selectedView === 'reports'
                           ? 'bg-white dark:bg-gray-700 text-secondary dark:text-dark-text shadow-sm'
-                          : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
-                      }`}
-                    >
-                      Reports
-                    </button>
-                  </div>
-                  
+                      : 'text-accent dark:text-dark-muted hover:text-secondary dark:hover:text-dark-text'
+                  }`}
+                >
+                  Reports
+                </button>
+              </div>
+              
                   {/* Add New Button */}
-                  <button
-                    onClick={() => {
+                <button
+                  onClick={() => {
                       setNewCustomerType(selectedView === 'prospects' ? 'prospect' : 'customer');
                       setShowNewCustomerModal(true);
-                    }}
+                  }}
                     className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
-                    </svg>
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z" />
+                  </svg>
                     Add {selectedView === 'customers' ? 'Customer' : selectedView === 'prospects' ? 'Prospect' : 'Report'}
-                  </button>
-                </div>
+                </button>
               </div>
+            </div>
 
               {/* Content Area */}
               <div className="min-h-[300px]">
-                {loadingCustomers ? (
+              {loadingCustomers ? (
                   <div className="flex items-center justify-center h-32">
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {getCurrentList().map((item) => (
-                      <div
-                        key={item.id}
+                    <div
+                      key={item.id}
                         className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
                         onClick={() => {
                           if ('type' in item) {
@@ -1652,7 +1652,7 @@ Please provide a detailed and helpful response based on the selected documents a
                             handleSelectReport(item);
                           }
                         }}
-                      >
+                    >
                         <div className="flex items-start justify-between mb-3">
                           <div className="flex items-center gap-2">
                             {'type' in item ? (
@@ -1685,13 +1685,13 @@ Please provide a detailed and helpful response based on the selected documents a
                             {item.email && <p>Email: {item.email}</p>}
                             <p>Status: {item.status}</p>
                             <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
-                          </div>
+                        </div>
                         ) : (
                           <div className="space-y-1 text-sm text-accent dark:text-dark-muted">
                             <p>Policy: {item.primaryPolicyType}</p>
                             <p>Documents: {item.documentNames.length}</p>
                             <p>Created: {new Date(item.createdAt).toLocaleDateString()}</p>
-                          </div>
+                      </div>
                         )}
                       </div>
                     ))}
@@ -1699,13 +1699,13 @@ Please provide a detailed and helpful response based on the selected documents a
                     {getCurrentList().length === 0 && (
                       <div className="col-span-full text-center py-8 text-accent dark:text-dark-muted">
                         No {selectedView} found. Click "Add {selectedView === 'customers' ? 'Customer' : selectedView === 'prospects' ? 'Prospect' : 'Report'}" to get started.
+                        </div>
+                      )}
                       </div>
-                    )}
-                  </div>
                 )}
-              </div>
+                    </div>
             </>
-          ) : (
+              ) : (
             /* Customer Detail View */
             <div>
               {/* Header with Back Button */}
@@ -1731,13 +1731,13 @@ Please provide a detailed and helpful response based on the selected documents a
                 </div>
                 <div className="flex items-center gap-2">
                   {selectedCustomer.type === 'prospect' && (
-                    <button
+                  <button
                       onClick={() => handleConvertToCustomer(selectedCustomer.id)}
                       className="px-3 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 transition-colors"
-                    >
+                  >
                       Convert to Customer
-                    </button>
-                  )}
+                  </button>
+              )}
                   <button
                     onClick={() => setShowUploader(true)}
                     className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -1756,8 +1756,8 @@ Please provide a detailed and helpful response based on the selected documents a
                     </svg>
                     Generate Report
                   </button>
+                  </div>
                 </div>
-              </div>
 
               {/* Toggle Buttons */}
               <div className="flex items-center gap-2 mb-6">
@@ -1805,11 +1805,11 @@ Please provide a detailed and helpful response based on the selected documents a
                   className="px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg font-medium transition-colors"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="inline mr-2">
-                    <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
-                  </svg>
+                      <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+                    </svg>
                   Contact Info
                 </button>
-              </div>
+                  </div>
 
               {/* Content Area */}
               {customerDetailView === 'chats' ? (
@@ -1835,14 +1835,14 @@ Please provide a detailed and helpful response based on the selected documents a
                               </h4>
                             </div>
                           </div>
-                          <button
+                      <button
                             onClick={(e) => handleDeleteChatSession(chat.id, e)}
                             className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity flex-shrink-0 ml-2"
-                          >
+                      >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                               <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-                            </svg>
-                          </button>
+                        </svg>
+                      </button>
                         </div>
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
@@ -1865,7 +1865,7 @@ Please provide a detailed and helpful response based on the selected documents a
                   {/* Pagination Controls */}
                   {getTotalChatPages(selectedCustomer.id) > 1 && (
                     <div className="flex items-center justify-center gap-4">
-                      <button
+                    <button
                         onClick={handlePrevChatPage}
                         disabled={chatHistoryPage === 0}
                         className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -1882,13 +1882,13 @@ Please provide a detailed and helpful response based on the selected documents a
                         onClick={handleNextChatPage}
                         disabled={chatHistoryPage >= getTotalChatPages(selectedCustomer.id) - 1}
                         className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
+                    >
                         Next
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                           <path d="M4,11V13H16L10.5,18.5L11.92,19.92L19.84,12L11.92,4.08L10.5,5.5L16,11H4Z" />
                         </svg>
-                      </button>
-                    </div>
+                    </button>
+                  </div>
                   )}
 
                   {/* Empty State */}
@@ -1898,15 +1898,15 @@ Please provide a detailed and helpful response based on the selected documents a
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-gray-400">
                           <path d="M12,3C6.5,3 2,6.58 2,11A7.18,7.18 0 0,0 2.64,14.25L1,22L8.75,20.36C9.81,20.75 10.87,21 12,21C17.5,21 22,17.42 22,13C22,8.58 17.5,5 12,5" />
                         </svg>
-                      </div>
+                </div>
                       <h3 className="text-lg font-medium text-secondary dark:text-dark-text mb-2">
                         No chat sessions yet
                       </h3>
                       <p className="text-accent dark:text-dark-muted">
                         Start a conversation with this customer using the chat interface below.
-                      </p>
-                    </div>
-                  )}
+                </p>
+              </div>
+            )}
                 </div>
               ) : customerDetailView === 'documents' ? (
                 <div>
@@ -1939,14 +1939,14 @@ Please provide a detailed and helpful response based on the selected documents a
                             <div className="flex items-start gap-2 flex-1 min-w-0">
                               <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center flex-shrink-0">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600 dark:text-green-400">
-                                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                                </svg>
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                    </svg>
                               </div>
                               <div className="flex-1 min-w-0">
                                 <h4 className="font-medium text-secondary dark:text-dark-text text-sm leading-tight break-words">
                                   {doc.name}
-                                </h4>
-                              </div>
+                  </h4>
+                            </div>
                             </div>
                             <button
                               onClick={(e) => {
@@ -1980,10 +1980,10 @@ Please provide a detailed and helpful response based on the selected documents a
                               {(doc.size / (1024 * 1024)).toFixed(2)} MB
                             </div>
                           </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
                   {/* Empty State */}
                   {getCustomerDocuments(selectedCustomer.id).length === 0 && (
@@ -2028,8 +2028,8 @@ Please provide a detailed and helpful response based on the selected documents a
                             }}
                             className="w-4 h-4 text-primary bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-primary focus:ring-2"
                           />
-                        </div>
-                        
+                </div>
+
                         {/* Clickable report area */}
                         <div 
                           className="cursor-pointer"
@@ -2046,20 +2046,20 @@ Please provide a detailed and helpful response based on the selected documents a
                                 <h4 className="font-medium text-secondary dark:text-dark-text text-sm leading-tight break-words">
                                   {report.title}
                                 </h4>
-                              </div>
                             </div>
-                            <button
+                              </div>
+                              <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 // TODO: Add delete report functionality
                               }}
                               className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity flex-shrink-0 ml-2"
-                            >
+                              >
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-                                <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
-                              </svg>
-                            </button>
-                          </div>
+                                  <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                                </svg>
+                              </button>
+                            </div>
                           <div className="space-y-2 ml-6">
                             <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -2071,10 +2071,10 @@ Please provide a detailed and helpful response based on the selected documents a
                               {report.content.substring(0, 100)}...
                             </div>
                           </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
 
                   {/* Empty State */}
                   {getCustomerReports(selectedCustomer.id).length === 0 && (
@@ -2100,10 +2100,10 @@ Please provide a detailed and helpful response based on the selected documents a
                   )}
                 </div>
               )}
-            </div>
-          )}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 flex-1">
         {/* Left side - Feature Cards */}
@@ -2165,7 +2165,18 @@ Please provide a detailed and helpful response based on the selected documents a
                   <div className="flex gap-2">
                     <button
                       onClick={() => {
-                        // Navigate to comparison page with selected documents
+                        // Navigate to comparison page with customer context
+                        const customerContext = {
+                          customerId: selectedCustomer.id,
+                          customerName: selectedCustomer.name,
+                          company: selectedCustomer.company || '',
+                          type: selectedCustomer.type,
+                          email: selectedCustomer.email || '',
+                          phone: selectedCustomer.phone || '',
+                          documents: getSelectedCustomerDocuments().map(doc => ({ id: doc.id, name: doc.name }))
+                        };
+                        
+                        localStorage.setItem('riskninja-comparison-customer-context', JSON.stringify(customerContext));
                         setSelectedDocumentIds(customerSelectedDocumentIds);
                         window.location.href = '/comparison';
                       }}
@@ -2183,7 +2194,7 @@ Please provide a detailed and helpful response based on the selected documents a
                     >
                       Risk Assessment
                     </button>
-                  </div>
+                </div>
                 </div>
               )}
 
@@ -2199,10 +2210,10 @@ Please provide a detailed and helpful response based on the selected documents a
                         {report.title}
                       </span>
                     ))}
-                  </div>
+                </div>
                 </div>
               )}
-              
+
               {/* Chat Interface */}
               <ChatInterface 
                 onSendMessage={handleCustomerChatMessage}
@@ -2212,8 +2223,8 @@ Please provide a detailed and helpful response based on the selected documents a
                 documents={getSelectedCustomerDocuments().map(doc => ({ id: doc.id, name: doc.name }))}
                 citationMap={citationMap}
                 onClearChat={handleClearChat}
-              />
-            </div>
+                  />
+                </div>
           ) : (
             <ChatInterface 
               onSendMessage={handleSendMessage}
@@ -2226,7 +2237,7 @@ Please provide a detailed and helpful response based on the selected documents a
             />
           )}
         </div>
-      </div>
+                </div>
 
       {/* Contact Information Overlay */}
       {showContactOverlay && selectedCustomer && (
@@ -2245,14 +2256,14 @@ Please provide a detailed and helpful response based on the selected documents a
                 </svg>
                 Contact Information
               </h3>
-              <button
+                  <button
                 onClick={() => setShowContactOverlay(false)}
                 className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors"
-              >
+                  >
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
                 </svg>
-              </button>
+                  </button>
             </div>
             
             <div className="space-y-4">
@@ -2320,18 +2331,18 @@ Please provide a detailed and helpful response based on the selected documents a
             </div>
             
             <div className="flex justify-end mt-6">
-              <button
+                  <button
                 onClick={() => setShowContactOverlay(false)}
                 className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-              >
+                  >
                 Close
-              </button>
+                  </button>
+                </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Document Upload Modal */}
+        {/* Document Upload Modal */}
       {showUploader && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white dark:bg-dark-surface rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -2343,14 +2354,14 @@ Please provide a detailed and helpful response based on the selected documents a
               >
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
-                </svg>
+                      </svg>
               </button>
             </div>
             
             <FileUploader onFilesUploaded={handleFilesUploaded} />
-          </div>
-        </div>
-      )}
+                    </div>
+                  </div>
+                )}
 
       {/* Document Upload Confirmation Modal */}
       {showDocumentUploadModal && (
@@ -2369,50 +2380,50 @@ Please provide a detailed and helpful response based on the selected documents a
             </div>
             
             <div className="space-y-4">
-              <div>
+                <div>
                 <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">Document Name</label>
-                <input
-                  type="text"
-                  value={documentTitle}
-                  onChange={(e) => setDocumentTitle(e.target.value)}
+                  <input
+                    type="text"
+                    value={documentTitle}
+                    onChange={(e) => setDocumentTitle(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text focus:ring-2 focus:ring-primary focus:border-primary"
                   placeholder="Enter document name..."
-                />
-              </div>
-              
-              <div>
+                  />
+                </div>
+
+                <div>
                 <label className="block text-sm font-medium text-secondary dark:text-dark-text mb-2">Policy Type</label>
-                <select
-                  value={documentPolicyType}
-                  onChange={(e) => setDocumentPolicyType(e.target.value)}
+                  <select
+                    value={documentPolicyType}
+                    onChange={(e) => setDocumentPolicyType(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-dark-bg text-secondary dark:text-dark-text focus:ring-2 focus:ring-primary focus:border-primary"
-                >
+                  >
                   {policyTypes.map(type => (
-                    <option key={type.value} value={type.value}>
+                      <option key={type.value} value={type.value}>
                       {type.label}
-                    </option>
-                  ))}
-                </select>
+                      </option>
+                    ))}
+                  </select>
               </div>
-            </div>
-            
+                </div>
+
             <div className="flex justify-end gap-3 mt-6">
-              <button
+                  <button
                 onClick={() => setShowDocumentUploadModal(false)}
                 className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDocumentUploadConfirm}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleDocumentUploadConfirm}
                 className="px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-              >
-                Upload Document
-              </button>
+                  >
+                    Upload Document
+                  </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
       {/* Document Viewer Overlay */}
       {showDocumentViewer && viewingDocument && (
@@ -2429,27 +2440,27 @@ Please provide a detailed and helpful response based on the selected documents a
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-green-600 dark:text-green-400">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
-                  </svg>
-                </div>
+                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
+                </svg>
+              </div>
                 <div>
                   <h3 className="text-lg font-semibold text-secondary dark:text-dark-text">
                     {viewingDocument.name}
-                  </h3>
+              </h3>
                   <p className="text-sm text-accent dark:text-dark-muted">
                     {viewingDocument.policyType || 'Unknown Type'} • {(viewingDocument.size / (1024 * 1024)).toFixed(2)} MB
                   </p>
                 </div>
               </div>
-              <button
+                <button
                 onClick={() => setShowDocumentViewer(false)}
                 className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
                 </svg>
-              </button>
-            </div>
+                  </button>
+                </div>
             
             {/* Document Content */}
             <div className="flex-1 p-4 overflow-hidden">
@@ -2506,8 +2517,8 @@ Please provide a detailed and helpful response based on the selected documents a
                       />
                       <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         If the document doesn't load, try the download button below.
-                      </div>
-                    </div>
+            </div>
+          </div>
                   );
                 }
 
@@ -2522,14 +2533,14 @@ Please provide a detailed and helpful response based on the selected documents a
                       </div>
                       <h3 className="text-lg font-medium text-secondary dark:text-dark-text mb-2">
                         Document Preview Unavailable
-                      </h3>
+              </h3>
                       <p className="text-accent dark:text-dark-muted mb-4">
                         This document cannot be previewed in the browser. You can download it or view the extracted content below.
                       </p>
                       
                       {/* Download Button */}
                       {viewingDocument.id && (
-                        <button
+              <button
                           onClick={async () => {
                             try {
                               console.log('📄 Attempting to download document:', viewingDocument.id);
@@ -2550,9 +2561,9 @@ Please provide a detailed and helpful response based on the selected documents a
                             }
                           }}
                           className="mb-6 px-6 py-3 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium"
-                        >
+              >
                           📥 Download Document
-                        </button>
+              </button>
                       )}
 
                       {/* Extracted Text Content */}
@@ -2566,8 +2577,8 @@ Please provide a detailed and helpful response based on the selected documents a
                                 : viewingDocument.extractedText || 'No content available'
                               }
                             </pre>
-                          </div>
-                        </div>
+            </div>
+                    </div>
                       )}
 
                       {/* Debug Info */}
@@ -2579,9 +2590,9 @@ Please provide a detailed and helpful response based on the selected documents a
                         Local File: {viewingDocument.file ? 'Available' : 'Not available'}<br/>
                         Extracted Text: {hasExtractedText && viewingDocument.extractedText ? `${viewingDocument.extractedText.length} characters` : 'Not available'}<br/>
                         Document ID: {viewingDocument.id || 'Not available'}
-                      </div>
                     </div>
                   </div>
+                </div>
                 );
               })()}
             </div>
@@ -2590,7 +2601,7 @@ Please provide a detailed and helpful response based on the selected documents a
             <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-dark-border">
               <div className="text-sm text-accent dark:text-dark-muted">
                 Uploaded: {new Date(viewingDocument.uploadedAt).toLocaleDateString()}
-              </div>
+          </div>
               <div className="flex gap-2">
                 {(viewingDocument.fileUrl || viewingDocument.file) && (
                   <a
@@ -2610,13 +2621,13 @@ Please provide a detailed and helpful response based on the selected documents a
                 </button>
               </div>
             </div>
-          </div>
-        </div>
+              </div>
+            </div>
       )}
 
       {/* Report Viewer Overlay */}
       {showReportViewer && viewingReport && (
-        <div 
+            <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
           onClick={() => setShowReportViewer(false)}
         >
@@ -2630,27 +2641,27 @@ Please provide a detailed and helpful response based on the selected documents a
                 <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-purple-600 dark:text-purple-400">
                     <path d="M9,12H15V10.5H9V12M9,16H15V14.5H9V16M9,8H15V6.5H9V8M5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4A2,2 0 0,0 17,2H7A2,2 0 0,0 5,4M7,4H17V20H7V4Z" />
-                  </svg>
-                </div>
+                </svg>
+              </div>
                 <div>
                   <h3 className="text-lg font-semibold text-secondary dark:text-dark-text">
                     {viewingReport.title}
                   </h3>
                   <p className="text-sm text-accent dark:text-dark-muted">
                     Report • Created {new Date(viewingReport.createdAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              <button
+              </p>
+            </div>
+          </div>
+                  <button
                 onClick={() => setShowReportViewer(false)}
                 className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors"
-              >
+                  >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
-                </svg>
-              </button>
-            </div>
-            
+                    </svg>
+                  </button>
+          </div>
+
             {/* Report Content */}
             <div className="flex-1 p-6 overflow-auto">
               <div className="prose dark:prose-invert max-w-none">
@@ -2675,10 +2686,10 @@ Please provide a detailed and helpful response based on the selected documents a
                   >
                     {viewingReport.content}
                   </ReactMarkdown>
-                </div>
               </div>
             </div>
-            
+            </div>
+          
             {/* Footer */}
             <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-dark-border">
               <div className="text-sm text-accent dark:text-dark-muted">
@@ -2686,7 +2697,7 @@ Please provide a detailed and helpful response based on the selected documents a
                 Updated: {new Date(viewingReport.updatedAt).toLocaleDateString()}
               </div>
               <div className="flex gap-2">
-                <button
+                  <button
                   onClick={() => {
                     // Export report as text
                     const content = `${viewingReport.title}\n${'='.repeat(viewingReport.title.length)}\n\nGenerated: ${new Date(viewingReport.createdAt).toLocaleString()}\nCustomer: ${selectedCustomer?.name || 'Unknown'}\n\n${viewingReport.content}`;
@@ -2702,9 +2713,9 @@ Please provide a detailed and helpful response based on the selected documents a
                     URL.revokeObjectURL(url);
                   }}
                   className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-secondary dark:text-dark-text text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-                >
+                  >
                   📥 Export Report
-                </button>
+                  </button>
                 <button
                   onClick={() => setShowReportViewer(false)}
                   className="px-3 py-2 bg-primary text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"

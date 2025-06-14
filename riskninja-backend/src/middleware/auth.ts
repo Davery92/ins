@@ -52,7 +52,7 @@ export const authenticateToken = async (
     } else if (error instanceof jwt.JsonWebTokenError) {
       res.status(403).json({ error: 'Invalid token' });
     } else {
-      res.status(403).json({ error: 'Invalid or expired token' });
+    res.status(403).json({ error: 'Invalid or expired token' });
     }
   }
 }; 
