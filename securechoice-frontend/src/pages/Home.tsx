@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import ChatInterface, { ChatMessage, CitationClick } from '../components/ChatInterface';
 import ApiStatus from '../components/ApiStatus';
 import FileUploader, { UploadedFile } from '../components/FileUploader';
@@ -43,6 +45,16 @@ interface ComparisonReport {
   createdBy: string;
 }
 
+interface UnderwritingReport {
+  id: string;
+  userId: string;
+  customerId: string;
+  title: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 const Home: React.FC = () => {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -61,7 +73,7 @@ const Home: React.FC = () => {
   const [newCustomerType, setNewCustomerType] = useState<'customer' | 'prospect'>('customer');
   
   // Customer detail view states
-  const [customerDetailView, setCustomerDetailView] = useState<'chats' | 'documents'>('chats');
+  const [customerDetailView, setCustomerDetailView] = useState<'chats' | 'documents' | 'reports'>('chats');
   const [showContactOverlay, setShowContactOverlay] = useState(false);
   const [chatHistoryPage, setChatHistoryPage] = useState(0);
   const CHATS_PER_PAGE = 6;
@@ -79,6 +91,8 @@ const Home: React.FC = () => {
   // Real customer data state
   const [customerDocuments, setCustomerDocuments] = useState<{[key: string]: any[]}>({});
   const [customerChats, setCustomerChats] = useState<{[key: string]: any[]}>({});
+  const [customerReports, setCustomerReports] = useState<{[key: string]: UnderwritingReport[]}>({});
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [loadingCustomerData, setLoadingCustomerData] = useState(false);
   const [loadingCustomers, setLoadingCustomers] = useState(true);
   
@@ -86,6 +100,11 @@ const Home: React.FC = () => {
   const [customerSelectedDocumentIds, setCustomerSelectedDocumentIds] = useState<string[]>([]);
   const [showDocumentViewer, setShowDocumentViewer] = useState(false);
   const [viewingDocument, setViewingDocument] = useState<PolicyDocument | null>(null);
+
+  // Report selection and viewer state
+  const [customerSelectedReportIds, setCustomerSelectedReportIds] = useState<string[]>([]);
+  const [showReportViewer, setShowReportViewer] = useState(false);
+  const [viewingReport, setViewingReport] = useState<UnderwritingReport | null>(null);
 
   const { user, token } = useAuth();
   const {
@@ -319,11 +338,12 @@ const Home: React.FC = () => {
     // Fetch customer-specific data
     setLoadingCustomerData(true);
     try {
-      const [documents, chats] = await Promise.all([
+      const [documents, chats, reports] = await Promise.all([
         fetchCustomerDocuments(customer.id),
-        fetchCustomerChats(customer.id)
+        fetchCustomerChats(customer.id),
+        fetchCustomerReports(customer.id)
       ]);
-      console.log('👤 Customer data loaded - Documents:', documents.length, 'Chats:', chats.length);
+      console.log('👤 Customer data loaded - Documents:', documents.length, 'Chats:', chats.length, 'Reports:', reports.length);
     } catch (error) {
       console.error('Error loading customer data:', error);
     } finally {
@@ -990,6 +1010,24 @@ Please provide a detailed and helpful response based on both the comparison repo
     return [];
   };
 
+  const fetchCustomerReports = async (customerId: string) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/customers/${customerId}/underwriting-reports`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (response.ok) {
+        const reports = await response.json();
+        setCustomerReports(prev => ({ ...prev, [customerId]: reports }));
+        return reports;
+      }
+    } catch (error) {
+      console.error('Error fetching customer reports:', error);
+    }
+    return [];
+  };
+
   const loadChatSession = async (sessionId: string) => {
     console.log('Loading chat session:', sessionId);
     try {
@@ -1085,6 +1123,10 @@ Please provide a detailed and helpful response based on both the comparison repo
 
   const getCustomerChats = (customerId: string) => {
     return customerChats[customerId] || [];
+  };
+
+  const getCustomerReports = (customerId: string) => {
+    return customerReports[customerId] || [];
   };
 
   // Pagination helpers for chat history tiles
@@ -1299,6 +1341,21 @@ Please provide a detailed and helpful response based on both the comparison repo
     }
   };
 
+  // Report selection handlers
+  const handleReportCheckboxChange = (reportId: string, checked: boolean) => {
+    if (checked) {
+      setCustomerSelectedReportIds(prev => [...prev, reportId]);
+    } else {
+      setCustomerSelectedReportIds(prev => prev.filter(id => id !== reportId));
+    }
+  };
+
+  const handleReportClick = (report: UnderwritingReport) => {
+    console.log('📄 Opening report viewer for:', report.title, report);
+    setViewingReport(report);
+    setShowReportViewer(true);
+  };
+
   const handleDocumentClick = async (document: PolicyDocument) => {
     console.log('📄 Opening document viewer for:', document.name, document);
     
@@ -1350,7 +1407,48 @@ Please provide a detailed and helpful response based on both the comparison repo
     return customerDocs.filter(doc => customerSelectedDocumentIds.includes(doc.id));
   };
 
-  // Updated chat handler to use selected documents
+  const getSelectedCustomerReports = () => {
+    if (!selectedCustomer) return [];
+    const customerReports = getCustomerReports(selectedCustomer.id);
+    return customerReports.filter(report => customerSelectedReportIds.includes(report.id));
+  };
+
+  const handleGenerateUnderwritingReport = async () => {
+    if (!selectedCustomer) return;
+    
+    // Get customer documents for context
+    const customerDocs = getCustomerDocuments(selectedCustomer.id);
+    const selectedDocs = getSelectedCustomerDocuments();
+    
+    // Use selected documents if any, otherwise use all customer documents
+    const docsToUse = selectedDocs.length > 0 ? selectedDocs : customerDocs;
+    
+    if (docsToUse.length === 0) {
+      alert('No documents available for this customer. Please upload documents first.');
+      return;
+    }
+
+    // Set the selected documents in the global context for the research page
+    setSelectedDocumentIds(docsToUse.map(doc => doc.id));
+    
+    // Store customer context in localStorage for the research page
+    const customerContext = {
+      customerId: selectedCustomer.id,
+      customerName: selectedCustomer.name,
+      company: selectedCustomer.company || '',
+      type: selectedCustomer.type,
+      email: selectedCustomer.email || '',
+      phone: selectedCustomer.phone || '',
+      documents: docsToUse.map(doc => ({ id: doc.id, name: doc.name }))
+    };
+    
+    localStorage.setItem('riskninja-customer-context', JSON.stringify(customerContext));
+    
+    // Navigate to research page
+    window.location.href = '/research';
+  };
+
+  // Updated chat handler to use selected documents and reports
   const handleCustomerChatMessage = async (message: string) => {
     if (!selectedCustomer) return;
 
@@ -1364,8 +1462,9 @@ Please provide a detailed and helpful response based on both the comparison repo
     
     setChatHistory(prev => [...prev, userMessage]);
 
-    // Get selected documents for context
+    // Get selected documents and reports for context
     const selectedDocs = getSelectedCustomerDocuments();
+    const selectedReports = getSelectedCustomerReports();
     
     // Create context with selected documents
     const documentTexts = selectedDocs.map((doc, index) =>
@@ -1373,20 +1472,34 @@ Please provide a detailed and helpful response based on both the comparison repo
 ${doc.extractedText || 'Unable to extract text from this document.'}`
     ).join('\n\n---\n\n');
 
-    const contextualPrompt = selectedDocs.length > 0 
-      ? `Based on the following documents for customer "${selectedCustomer.name}" and the user question, provide a helpful response:
+    // Create context with selected reports
+    const reportTexts = selectedReports.map((report, index) =>
+      `REPORT ${index + 1}: ${report.title}
+${report.content}`
+    ).join('\n\n---\n\n');
 
-DOCUMENTS:
-${documentTexts}
+    // Build comprehensive context
+    let contextualPrompt = `Based on the following information for customer "${selectedCustomer.name}" and the user question, provide a helpful response:\n\n`;
+    
+    if (selectedDocs.length > 0) {
+      contextualPrompt += `DOCUMENTS:\n${documentTexts}\n\n`;
+    }
+    
+    if (selectedReports.length > 0) {
+      contextualPrompt += `REPORTS:\n${reportTexts}\n\n`;
+    }
+
+    if (selectedDocs.length === 0 && selectedReports.length === 0) {
+      contextualPrompt = `The user is asking about customer "${selectedCustomer.name}". No documents or reports are currently selected. 
 
 USER QUESTION: ${message}
 
-Please provide a detailed and helpful response based on the document content.`
-      : `The user is asking about customer "${selectedCustomer.name}". No documents are currently selected. 
+Please provide a helpful response. You may suggest selecting relevant documents or reports for more detailed analysis.`;
+    } else {
+      contextualPrompt += `USER QUESTION: ${message}
 
-USER QUESTION: ${message}
-
-Please provide a helpful response. You may suggest selecting relevant documents for more detailed analysis.`;
+Please provide a detailed and helpful response based on the selected documents and reports.`;
+    }
 
     // Create AI message with streaming
     const aiMessageId = generateMessageId();
@@ -1634,6 +1747,15 @@ Please provide a helpful response. You may suggest selecting relevant documents 
                     </svg>
                     Upload Documents
                   </button>
+                  <button
+                    onClick={handleGenerateUnderwritingReport}
+                    className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M9,12H15V10.5H9V12M9,16H15V14.5H9V16M9,8H15V6.5H9V8M5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4A2,2 0 0,0 17,2H7A2,2 0 0,0 5,4M7,4H17V20H7V4Z" />
+                    </svg>
+                    Generate Report
+                  </button>
                 </div>
               </div>
 
@@ -1664,6 +1786,19 @@ Please provide a helpful response. You may suggest selecting relevant documents 
                     <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z" />
                   </svg>
                   Documents ({getCustomerDocuments(selectedCustomer.id).length})
+                </button>
+                <button
+                  onClick={() => setCustomerDetailView('reports')}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                    customerDetailView === 'reports'
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="inline mr-2">
+                    <path d="M9,12H15V10.5H9V12M9,16H15V14.5H9V16M9,8H15V6.5H9V8M5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4A2,2 0 0,0 17,2H7A2,2 0 0,0 5,4M7,4H17V20H7V4Z" />
+                  </svg>
+                  Reports ({getCustomerReports(selectedCustomer.id).length})
                 </button>
                 <button
                   onClick={() => setShowContactOverlay(true)}
@@ -1773,7 +1908,7 @@ Please provide a helpful response. You may suggest selecting relevant documents 
                     </div>
                   )}
                 </div>
-              ) : (
+              ) : customerDetailView === 'documents' ? (
                 <div>
                   {/* Documents Tiles */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1873,6 +2008,97 @@ Please provide a helpful response. You may suggest selecting relevant documents 
                     </div>
                   )}
                 </div>
+              ) : (
+                <div>
+                  {/* Reports Tiles */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {getCustomerReports(selectedCustomer.id).map((report) => (
+                      <div
+                        key={report.id}
+                        className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:shadow-md transition-shadow group relative"
+                      >
+                        {/* Checkbox */}
+                        <div className="absolute top-3 left-3 z-10">
+                          <input
+                            type="checkbox"
+                            checked={customerSelectedReportIds.includes(report.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleReportCheckboxChange(report.id, e.target.checked);
+                            }}
+                            className="w-4 h-4 text-primary bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-primary focus:ring-2"
+                          />
+                        </div>
+                        
+                        {/* Clickable report area */}
+                        <div 
+                          className="cursor-pointer"
+                          onClick={() => handleReportClick(report)}
+                        >
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-start gap-2 flex-1 min-w-0 ml-6">
+                              <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center flex-shrink-0">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-purple-600 dark:text-purple-400">
+                                  <path d="M9,12H15V10.5H9V12M9,16H15V14.5H9V16M9,8H15V6.5H9V8M5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4A2,2 0 0,0 17,2H7A2,2 0 0,0 5,4M7,4H17V20H7V4Z" />
+                                </svg>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-secondary dark:text-dark-text text-sm leading-tight break-words">
+                                  {report.title}
+                                </h4>
+                              </div>
+                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                // TODO: Add delete report functionality
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 p-1 transition-opacity flex-shrink-0 ml-2"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z" />
+                              </svg>
+                            </button>
+                          </div>
+                          <div className="space-y-2 ml-6">
+                            <div className="flex items-center gap-2 text-sm text-accent dark:text-dark-muted">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9,10H7V12H9V10M13,10H11V12H13V10M17,10H15V12H17V10M19,3A2,2 0 0,1 21,5V19A2,2 0 0,1 19,21H5C3.89,21 3,20.1 3,19V5A2,2 0 0,1 5,3H6V1H8V3H16V1H18V3H19M19,19V8H5V19H19M7,16H9V14H7V16M13,16H11V14H13V16M17,16H15V14H17V16Z" />
+                              </svg>
+                              {new Date(report.createdAt).toLocaleDateString()}
+                            </div>
+                            <div className="text-sm text-accent dark:text-dark-muted line-clamp-2">
+                              {report.content.substring(0, 100)}...
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Empty State */}
+                  {getCustomerReports(selectedCustomer.id).length === 0 && (
+                    <div className="text-center py-12">
+                      <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-gray-400">
+                          <path d="M9,12H15V10.5H9V12M9,16H15V14.5H9V16M9,8H15V6.5H9V8M5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4A2,2 0 0,0 17,2H7A2,2 0 0,0 5,4M7,4H17V20H7V4Z" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-medium text-secondary dark:text-dark-text mb-2">
+                        No underwriting reports yet
+                      </h3>
+                      <p className="text-accent dark:text-dark-muted mb-4">
+                        Generate underwriting reports for this customer to get started with risk analysis.
+                      </p>
+                      <button
+                        onClick={handleGenerateUnderwritingReport}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        Generate Report
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1957,6 +2183,22 @@ Please provide a helpful response. You may suggest selecting relevant documents 
                     >
                       Risk Assessment
                     </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Selected Reports Info */}
+              {customerSelectedReportIds.length > 0 && (
+                <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-4">
+                  <h3 className="font-medium text-purple-900 dark:text-purple-100 mb-2">
+                    {customerSelectedReportIds.length} Report{customerSelectedReportIds.length !== 1 ? 's' : ''} Selected
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {getSelectedCustomerReports().map(report => (
+                      <span key={report.id} className="px-2 py-1 bg-purple-100 dark:bg-purple-800 text-purple-800 dark:text-purple-200 text-xs rounded">
+                        {report.title}
+                      </span>
+                    ))}
                   </div>
                 </div>
               )}
@@ -2362,6 +2604,109 @@ Please provide a helpful response. You may suggest selecting relevant documents 
                 )}
                 <button
                   onClick={() => setShowDocumentViewer(false)}
+                  className="px-3 py-2 bg-primary text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Report Viewer Overlay */}
+      {showReportViewer && viewingReport && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowReportViewer(false)}
+        >
+          <div 
+            className="bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border rounded-xl shadow-xl w-full h-full max-w-6xl max-h-[90vh] mx-4 my-4 flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-dark-border">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-purple-600 dark:text-purple-400">
+                    <path d="M9,12H15V10.5H9V12M9,16H15V14.5H9V16M9,8H15V6.5H9V8M5,4V20A2,2 0 0,0 7,22H17A2,2 0 0,0 19,20V4A2,2 0 0,0 17,2H7A2,2 0 0,0 5,4M7,4H17V20H7V4Z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-secondary dark:text-dark-text">
+                    {viewingReport.title}
+                  </h3>
+                  <p className="text-sm text-accent dark:text-dark-muted">
+                    Report • Created {new Date(viewingReport.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowReportViewer(false)}
+                className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg transition-colors"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Report Content */}
+            <div className="flex-1 p-6 overflow-auto">
+              <div className="prose dark:prose-invert max-w-none">
+                <div className="text-secondary dark:text-dark-text">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm]}
+                    className="text-sm leading-relaxed"
+                    components={{
+                      h1: ({children}: {children: React.ReactNode}) => <h1 className="text-secondary dark:text-dark-text">{children}</h1>,
+                      h2: ({children}: {children: React.ReactNode}) => <h2 className="text-secondary dark:text-dark-text">{children}</h2>,
+                      h3: ({children}: {children: React.ReactNode}) => <h3 className="text-secondary dark:text-dark-text">{children}</h3>,
+                      h4: ({children}: {children: React.ReactNode}) => <h4 className="text-secondary dark:text-dark-text">{children}</h4>,
+                      h5: ({children}: {children: React.ReactNode}) => <h5 className="text-secondary dark:text-dark-text">{children}</h5>,
+                      h6: ({children}: {children: React.ReactNode}) => <h6 className="text-secondary dark:text-dark-text">{children}</h6>,
+                      p: ({children}: {children: React.ReactNode}) => <p className="text-secondary dark:text-dark-text">{children}</p>,
+                      li: ({children}: {children: React.ReactNode}) => <li className="text-secondary dark:text-dark-text">{children}</li>,
+                      strong: ({children}: {children: React.ReactNode}) => <strong className="text-secondary dark:text-dark-text font-bold">{children}</strong>,
+                      em: ({children}: {children: React.ReactNode}) => <em className="text-secondary dark:text-dark-text italic">{children}</em>,
+                      code: ({children}: {children: React.ReactNode}) => <code className="text-secondary dark:text-dark-text bg-gray-100 dark:bg-gray-800 px-1 rounded">{children}</code>,
+                      blockquote: ({children}: {children: React.ReactNode}) => <blockquote className="text-secondary dark:text-dark-text border-l-4 border-gray-300 dark:border-gray-600 pl-4">{children}</blockquote>,
+                    }}
+                  >
+                    {viewingReport.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-dark-border">
+              <div className="text-sm text-accent dark:text-dark-muted">
+                Generated: {new Date(viewingReport.createdAt).toLocaleDateString()} • 
+                Updated: {new Date(viewingReport.updatedAt).toLocaleDateString()}
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    // Export report as text
+                    const content = `${viewingReport.title}\n${'='.repeat(viewingReport.title.length)}\n\nGenerated: ${new Date(viewingReport.createdAt).toLocaleString()}\nCustomer: ${selectedCustomer?.name || 'Unknown'}\n\n${viewingReport.content}`;
+                    
+                    const blob = new Blob([content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `${viewingReport.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                  }}
+                  className="px-3 py-2 bg-gray-100 dark:bg-gray-700 text-secondary dark:text-dark-text text-sm rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  📥 Export Report
+                </button>
+                <button
+                  onClick={() => setShowReportViewer(false)}
                   className="px-3 py-2 bg-primary text-white text-sm rounded-lg hover:bg-blue-600 transition-colors"
                 >
                   Close

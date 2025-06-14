@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import ReactMarkdown from 'react-markdown';
@@ -33,12 +33,48 @@ const Research: React.FC = () => {
   const [report, setReport] = useState<ResearchReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
+  const [customerContext, setCustomerContext] = useState<any>(null);
   
   // Chat state
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isChatLoading, setIsChatLoading] = useState(false);
 
   const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || '/api';
+
+  // Initialize with customer context if available
+  useEffect(() => {
+    const storedContext = localStorage.getItem('riskninja-customer-context');
+    if (storedContext) {
+      try {
+        const context = JSON.parse(storedContext);
+        setCustomerContext(context);
+        
+        // Pre-fill form with customer data
+        if (context.company) {
+          const companyUrl = context.company.startsWith('http') 
+            ? context.company 
+            : `https://${context.company}`;
+          setUrl(companyUrl);
+        }
+        
+        // Pre-fill additional text with customer context
+        const contextText = `Customer: ${context.customerName}
+Company: ${context.company || 'N/A'}
+Type: ${context.type}
+Email: ${context.email || 'N/A'}
+Phone: ${context.phone || 'N/A'}
+
+This underwriting research is being conducted for the above customer/prospect.`;
+        
+        setAdditionalText(contextText);
+        
+        // Clear the stored context after using it
+        localStorage.removeItem('riskninja-customer-context');
+      } catch (error) {
+        console.error('Error parsing customer context:', error);
+      }
+    }
+  }, []);
 
   const handleFilesUploaded = (newFiles: UploadedFile[]) => {
     setUploadedDocuments(prev => [...prev, ...newFiles]);
@@ -114,10 +150,12 @@ const Research: React.FC = () => {
       setChatHistory([welcomeMessage]);
 
       // Save report under customer if provided
-      if (customerId) {
+      const customerIdToUse = customerId || customerContext?.customerId;
+      if (customerIdToUse) {
         try {
+          const customerName = customerContext?.customerName || 'Customer';
           const saveResponse = await fetch(
-            `${API_BASE_URL}/customers/${customerId}/underwriting-reports`,
+            `${API_BASE_URL}/customers/${customerIdToUse}/underwriting-reports`,
             {
               method: 'POST',
               headers: {
@@ -125,13 +163,15 @@ const Research: React.FC = () => {
                 'Authorization': `Bearer ${token}`
               },
               body: JSON.stringify({
-                title: `Underwriting Research Report - ${new Date().toLocaleDateString()}`,
+                title: `Underwriting Research Report - ${customerName} - ${new Date().toLocaleDateString()}`,
                 content: result.report
               })
             }
           );
           if (!saveResponse.ok) {
             console.error('Failed to save underwriting report');
+          } else {
+            console.log('✅ Underwriting report saved successfully for customer:', customerName);
           }
         } catch (err) {
           console.error('Error saving underwriting report:', err);
@@ -358,6 +398,26 @@ Please provide a detailed and helpful response based on the research report cont
             <p className="text-accent dark:text-dark-muted">
               Generate comprehensive underwriting analysis by researching company websites, adding context, and uploading supporting documents.
             </p>
+            
+            {/* Customer Context Indicator */}
+            {customerContext && (
+              <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-blue-600">
+                    <path d="M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z" />
+                  </svg>
+                  <span className="font-medium text-blue-900 dark:text-blue-100">
+                    Research for Customer: {customerContext.customerName}
+                  </span>
+                </div>
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Company: {customerContext.company || 'N/A'} • Type: {customerContext.type}
+                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                  The generated report will be automatically saved to this customer's profile.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Research Form */}
